@@ -1,18 +1,18 @@
 '''
 train
 '''
-import argparse
 import os
 from functools import partial
 
+import torch
+from tqdm import tqdm
+
 import dataloader
 import model
-import torch
 import util
 from decoding import Decode, get_decode_fn
 from model import dummy_mask
-from tqdm import tqdm
-from trainer import BaseTrainer, setup_seed
+from trainer import BaseTrainer
 
 tqdm.monitor_interval = 0
 
@@ -45,111 +45,83 @@ class Arch(util.NamedEnum):
     hmmfull = 'hmmfull'  # 1st-order hard attention without input-feeding
 
 
-def get_args():
-    '''
-    get_args
-    '''
-    # yapf: disable
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--dataset', required=True, type=Data, choices=list(Data))
-    parser.add_argument('--train', required=True, nargs='+')
-    parser.add_argument('--dev', required=True)
-    parser.add_argument('--test', default=None, type=str)
-    parser.add_argument('--src_lang', default=None, type=str)
-    parser.add_argument('--trg_lang', default=None, type=str)
-    parser.add_argument('--vocab', default=None, type=str)
-    parser.add_argument('--max_seq_len', default=128, type=int)
-    parser.add_argument('--max_decode_len', default=128, type=int)
-    parser.add_argument('--model', required=True, help='dump model filename')
-    parser.add_argument('--load', default='', help='load model and continue training; with `smart`, recover training automatically')
-    parser.add_argument('--init', default='', help='control initialization')
-    parser.add_argument('--bs', default=20, type=int, help='training batch size')
-    parser.add_argument('--epochs', default=20, type=int, help='maximum training epochs')
-    parser.add_argument('--optimizer', default='Adam', choices=['SGD', 'Adadelta', 'Adam'])
-    parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
-    parser.add_argument('--min_lr', default=1e-5, type=float, help='minimum learning rate')
-    parser.add_argument('--momentum', default=0.9, type=float, help='momentum of SGD')
-    parser.add_argument('--estop', default=1e-8, type=float, help='early stopping criterion')
-    parser.add_argument('--cooldown', default=0, type=int, help='cooldown of `ReduceLROnPlateau`')
-    parser.add_argument('--patience', default=0, type=int, help='patience of `ReduceLROnPlateau`')
-    parser.add_argument('--discount_factor', default=0.5, type=float, help='discount factor of `ReduceLROnPlateau`')
-    parser.add_argument('--max_norm', default=0, type=float, help='gradient clipping max norm')
-    parser.add_argument('--gpuid', default=[], nargs='+', type=int, help='choose which GPU to use')
-    parser.add_argument('--dropout', default=0.2, type=float, help='dropout prob')
-    parser.add_argument('--embed_dim', default=100, type=int, help='embedding dimension')
-    parser.add_argument('--src_layer', default=1, type=int, help='source encoder number of layers')
-    parser.add_argument('--trg_layer', default=1, type=int, help='target decoder number of layers')
-    parser.add_argument('--src_hs', default=200, type=int, help='source encoder hidden dimension')
-    parser.add_argument('--trg_hs', default=200, type=int, help='target decoder hidden dimension')
-    parser.add_argument('--arch', required=True, type=Arch, choices=list(Arch))
-    parser.add_argument('--nb_sample', default=2, type=int, help='number of sample in REINFORCE approximation')
-    parser.add_argument('--wid_siz', default=11, type=int, help='maximum transition in 1st-order hard attention')
-    parser.add_argument('--loglevel', default='info', choices=['info', 'debug'])
-    parser.add_argument('--saveall', default=False, action='store_true', help='keep all models')
-    parser.add_argument('--indtag', default=False, action='store_true', help='separate tag from source string')
-    parser.add_argument('--decode', default=Decode.greedy, type=Decode, choices=list(Decode))
-    parser.add_argument('--mono', default=False, action='store_true', help='enforce monotonicity')
-    parser.add_argument('--bow', default=False, action='store_true', help='use bag-of-word encoder')
-    parser.add_argument('--inputfeed', default=False, action='store_true', help='use inputfeed decoder')
-    parser.add_argument('--bestacc', default=False, action='store_true', help='select model by accuracy only')
-    parser.add_argument('--shuffle', default=False, action='store_true', help='shuffle the data')
-    parser.add_argument('--cleanup_anyway', default=False, action='store_true', help='cleanup anyway')
-    # yapf: enable
-    return parser.parse_args()
-
-
 class Trainer(BaseTrainer):
     '''docstring for Trainer.'''
+    def set_args(self):
+        '''
+        get_args
+        '''
+        # yapf: disable
+        super().set_args()
+        parser = self.parser
+        parser.add_argument('--dataset', required=True, type=Data, choices=list(Data))
+        parser.add_argument('--max_seq_len', default=128, type=int)
+        parser.add_argument('--max_decode_len', default=128, type=int)
+        parser.add_argument('--init', default='', help='control initialization')
+        parser.add_argument('--dropout', default=0.2, type=float, help='dropout prob')
+        parser.add_argument('--embed_dim', default=100, type=int, help='embedding dimension')
+        parser.add_argument('--src_layer', default=1, type=int, help='source encoder number of layers')
+        parser.add_argument('--trg_layer', default=1, type=int, help='target decoder number of layers')
+        parser.add_argument('--src_hs', default=200, type=int, help='source encoder hidden dimension')
+        parser.add_argument('--trg_hs', default=200, type=int, help='target decoder hidden dimension')
+        parser.add_argument('--arch', required=True, type=Arch, choices=list(Arch))
+        parser.add_argument('--nb_sample', default=2, type=int, help='number of sample in REINFORCE approximation')
+        parser.add_argument('--wid_siz', default=11, type=int, help='maximum transition in 1st-order hard attention')
+        parser.add_argument('--indtag', default=False, action='store_true', help='separate tag from source string')
+        parser.add_argument('--decode', default=Decode.greedy, type=Decode, choices=list(Decode))
+        parser.add_argument('--mono', default=False, action='store_true', help='enforce monotonicity')
+        parser.add_argument('--bestacc', default=False, action='store_true', help='select model by accuracy only')
+        # yapf: enable
 
-    def load_data(self, dataset, train, dev, test, opt):
+    def load_data(self, dataset, train, dev, test):
         assert self.data is None
         logger = self.logger
+        params = self.params
         # yapf: disable
-        if opt.arch == Arch.hardmono:
+        if params.arch == Arch.hardmono:
             if dataset == Data.sigmorphon17task1:
-                self.data = dataloader.AlignSIGMORPHON2017Task1(train, dev, test, opt.shuffle)
+                self.data = dataloader.AlignSIGMORPHON2017Task1(train, dev, test, params.shuffle)
             elif dataset == Data.g2p:
-                self.data = dataloader.AlignStandardG2P(train, dev, test, opt.shuffle)
+                self.data = dataloader.AlignStandardG2P(train, dev, test, params.shuffle)
             elif dataset == Data.news15:
-                self.data = dataloader.AlignTransliteration(train, dev, test, opt.shuffle)
+                self.data = dataloader.AlignTransliteration(train, dev, test, params.shuffle)
             else:
                 raise ValueError
         else:
             if dataset == Data.sigmorphon17task1:
-                if opt.indtag:
-                    self.data = dataloader.TagSIGMORPHON2017Task1(train, dev, test, opt.shuffle)
+                if params.indtag:
+                    self.data = dataloader.TagSIGMORPHON2017Task1(train, dev, test, params.shuffle)
                 else:
-                    self.data = dataloader.SIGMORPHON2017Task1(train, dev, test, opt.shuffle)
+                    self.data = dataloader.SIGMORPHON2017Task1(train, dev, test, params.shuffle)
             elif dataset == Data.unimorph:
-                if opt.indtag:
-                    self.data = dataloader.TagUnimorph(train, dev, test, opt.shuffle)
+                if params.indtag:
+                    self.data = dataloader.TagUnimorph(train, dev, test, params.shuffle)
                 else:
-                    self.data = dataloader.Unimorph(train, dev, test, opt.shuffle)
+                    self.data = dataloader.Unimorph(train, dev, test, params.shuffle)
             elif dataset == Data.sigmorphon19task1:
-                assert isinstance(train, list) and len(train) == 2 and opt.indtag
-                self.data = dataloader.TagSIGMORPHON2019Task1(train, dev, test, opt.shuffle)
+                assert isinstance(train, list) and len(train) == 2 and params.indtag
+                self.data = dataloader.TagSIGMORPHON2019Task1(train, dev, test, params.shuffle)
             elif dataset == Data.sigmorphon19task2:
-                assert opt.indtag
-                self.data = dataloader.TagSIGMORPHON2019Task2(train, dev, test, opt.shuffle)
+                assert params.indtag
+                self.data = dataloader.TagSIGMORPHON2019Task2(train, dev, test, params.shuffle)
             elif dataset == Data.g2p:
-                self.data = dataloader.StandardG2P(train, dev, test, opt.shuffle)
+                self.data = dataloader.StandardG2P(train, dev, test, params.shuffle)
             elif dataset == Data.p2g:
-                self.data = dataloader.StandardP2G(train, dev, test, opt.shuffle)
+                self.data = dataloader.StandardP2G(train, dev, test, params.shuffle)
             elif dataset == Data.news15:
-                self.data = dataloader.Transliteration(train, dev, test, opt.shuffle)
+                self.data = dataloader.Transliteration(train, dev, test, params.shuffle)
             elif dataset == Data.sigmorphon16task1:
-                if opt.indtag:
-                    self.data = dataloader.TagSIGMORPHON2016Task1(train, dev, test, opt.shuffle)
+                if params.indtag:
+                    self.data = dataloader.TagSIGMORPHON2016Task1(train, dev, test, params.shuffle)
                 else:
-                    self.data = dataloader.SIGMORPHON2016Task1(train, dev, test, opt.shuffle)
+                    self.data = dataloader.SIGMORPHON2016Task1(train, dev, test, params.shuffle)
             elif dataset == Data.lemma:
-                if opt.indtag:
-                    self.data = dataloader.TagLemmatization(train, dev, test, opt.shuffle)
+                if params.indtag:
+                    self.data = dataloader.TagLemmatization(train, dev, test, params.shuffle)
                 else:
-                    self.data = dataloader.Lemmatization(train, dev, test, opt.shuffle)
+                    self.data = dataloader.Lemmatization(train, dev, test, params.shuffle)
             elif dataset == Data.lemmanotag:
-                self.data = dataloader.LemmatizationNotag(train, dev, test, opt.shuffle)
+                self.data = dataloader.LemmatizationNotag(train, dev, test, params.shuffle)
             else:
                 raise ValueError
         # yapf: enable
@@ -158,25 +130,26 @@ class Trainer(BaseTrainer):
         logger.info('src vocab %r', self.data.source[:500])
         logger.info('trg vocab %r', self.data.target[:500])
 
-    def build_model(self, opt):
+    def build_model(self):
         assert self.model is None
-        if opt.arch == Arch.hardmono:
-            opt.indtag, opt.mono = True, True
-        params = dict()
-        params['src_vocab_size'] = self.data.source_vocab_size
-        params['trg_vocab_size'] = self.data.target_vocab_size
-        params['embed_dim'] = opt.embed_dim
-        params['dropout_p'] = opt.dropout
-        params['src_hid_size'] = opt.src_hs
-        params['trg_hid_size'] = opt.trg_hs
-        params['src_nb_layers'] = opt.src_layer
-        params['trg_nb_layers'] = opt.trg_layer
-        params['nb_attr'] = self.data.nb_attr
-        params['nb_sample'] = opt.nb_sample
-        params['wid_siz'] = opt.wid_siz
-        params['src_c2i'] = self.data.source_c2i
-        params['trg_c2i'] = self.data.target_c2i
-        params['attr_c2i'] = self.data.attr_c2i
+        params = self.params
+        if params.arch == Arch.hardmono:
+            params.indtag, params.mono = True, True
+        kwargs = dict()
+        kwargs['src_vocab_size'] = self.data.source_vocab_size
+        kwargs['trg_vocab_size'] = self.data.target_vocab_size
+        kwargs['embed_dim'] = params.embed_dim
+        kwargs['dropout_p'] = params.dropout
+        kwargs['src_hid_size'] = params.src_hs
+        kwargs['trg_hid_size'] = params.trg_hs
+        kwargs['src_nb_layers'] = params.src_layer
+        kwargs['trg_nb_layers'] = params.trg_layer
+        kwargs['nb_attr'] = self.data.nb_attr
+        kwargs['nb_sample'] = params.nb_sample
+        kwargs['wid_siz'] = params.wid_siz
+        kwargs['src_c2i'] = self.data.source_c2i
+        kwargs['trg_c2i'] = self.data.target_c2i
+        kwargs['attr_c2i'] = self.data.attr_c2i
         model_class = None
         indtag, mono = True, True
         # yapf: disable
@@ -200,20 +173,21 @@ class Trainer(BaseTrainer):
             Arch.hmmfull: model.FullHMMTransducer
         }
         # yapf: enable
-        if opt.indtag or opt.mono:
-            model_class = fancy_classfactory[(opt.arch, opt.copy, opt.indtag,
-                                              opt.mono)]
+        if params.indtag or params.mono:
+            model_class = fancy_classfactory[(params.arch, params.indtag,
+                                              params.mono)]
         else:
-            model_class = regular_classfactory[opt.arch]
-        self.model = model_class(**params)
-        if opt.indtag:
+            model_class = regular_classfactory[params.arch]
+        self.model = model_class(**kwargs)
+        if params.indtag:
             self.logger.info('number of attribute %d', self.model.nb_attr)
             self.logger.info('dec 1st rnn %r', self.model.dec_rnn.layers[0])
-        if opt.arch in [
+        if params.arch in [
                 Arch.softinputfeed, Arch.approxihardinputfeed,
                 Arch.largesoftinputfeed
         ]:
             self.logger.info('merge_input with %r', self.model.merge_input)
+        self.logger.info('model: %r', self.model)
         self.logger.info('number of parameter %d',
                          self.model.count_nb_params())
         self.model = self.model.to(self.device)
@@ -231,7 +205,8 @@ class Trainer(BaseTrainer):
         self.model = self.model.to(self.device)
         self.logger.info(f'load from {filepath}')
 
-    def setup_evalutator(self, arch, dataset):
+    def setup_evalutator(self):
+        arch, dataset = self.params.arch, self.params.dataset
         if arch == Arch.hardmono:
             if dataset == Data.news15:
                 self.evaluator = util.PairTranslitEvaluator()
@@ -273,8 +248,9 @@ class Trainer(BaseTrainer):
                 dist = util.edit_distance(pred, trg.view(-1).tolist()[1:-1])
 
                 src_mask = dummy_mask(src)
-                out = self.model(src, src_mask, trg)
-                loss = self.model.loss(out, trg[1:]).item()
+                trg_mask = dummy_mask(trg)
+                data = (src, src_mask, trg, trg_mask)
+                loss = self.model.get_loss(data).item()
 
                 trg = self.data.decode_target(trg)[1:-1]
                 pred = self.data.decode_target(pred)
@@ -283,7 +259,7 @@ class Trainer(BaseTrainer):
                 cnt += 1
         self.logger.info(f'finished decoding {cnt} {mode} instance')
 
-    def select_model(self, opt):
+    def select_model(self):
         best_fp, _, best_res = self.models[0]
         best_acc_fp, _, best_acc = self.models[0]
         best_devloss_fp, best_devloss, _ = self.models[0]
@@ -305,7 +281,7 @@ class Trainer(BaseTrainer):
                 best_acc_fp, best_acc = fp, res
             if devloss <= best_devloss:
                 best_devloss_fp, best_devloss = fp, devloss
-        if opt.bestacc:
+        if self.params.bestacc:
             best_fp = best_acc_fp
         return best_fp, set([best_fp])
 
@@ -314,42 +290,30 @@ def main():
     '''
     main
     '''
-    opt = get_args()
-    util.maybe_mkdir(opt.model)
-    logger = util.get_logger(opt.model + '.log', log_level=opt.loglevel)
-    if opt.dataset != Data.sigmorphon19task1:
-        opt.train = opt.train[0]
-    for key, value in vars(opt).items():
-        logger.info('command line argument: %s - %r', key, value)
-    setup_seed(opt.seed)
-
-    trainer = Trainer(logger)
-    decode_fn = get_decode_fn(opt.decode, opt.max_decode_len)
-    trainer.load_data(opt.dataset, opt.train, opt.dev, opt.test, opt)
-    trainer.setup_evalutator(opt.arch, opt.dataset)
-    if opt.load and opt.load != '0':
-        if opt.load == 'smart':
-            start_epoch = trainer.smart_load_model(opt.model) + 1
+    trainer = Trainer()
+    params = trainer.params
+    decode_fn = get_decode_fn(params.decode, params.max_decode_len)
+    trainer.load_data(params.dataset, params.train, params.dev, params.test)
+    trainer.setup_evalutator()
+    if params.load and params.load != '0':
+        if params.load == 'smart':
+            start_epoch = trainer.smart_load_model(params.model) + 1
         else:
-            start_epoch = trainer.load_model(opt.load) + 1
-        logger.info('continue training from epoch %d', start_epoch)
-        trainer.setup_training(opt.optimizer, opt.lr, opt.momentum)
-        trainer.setup_scheduler(opt.min_lr, opt.patience, opt.cooldown,
-                                opt.discount_factor)
-        trainer.load_training(opt.model)
+            start_epoch = trainer.load_model(params.load) + 1
+        trainer.logger.info('continue training from epoch %d', start_epoch)
+        trainer.setup_training()
+        trainer.load_training(params.model)
     else:  # start from scratch
         start_epoch = 0
-        trainer.build_model(opt)
-        if opt.init:
-            if os.path.isfile(opt.init):
-                trainer.load_state_dict(opt.init)
+        trainer.build_model()
+        if params.init:
+            if os.path.isfile(params.init):
+                trainer.load_state_dict(params.init)
             else:
-                trainer.dump_state_dict(opt.init)
-        trainer.setup_training(opt.optimizer, opt.lr, opt.momentum)
-        trainer.setup_scheduler(opt.min_lr, opt.patience, opt.cooldown,
-                                opt.discount_factor)
+                trainer.dump_state_dict(params.init)
+        trainer.setup_training()
 
-    trainer.run(opt, start_epoch, decode_fn=decode_fn)
+    trainer.run(start_epoch, decode_fn=decode_fn)
 
 
 if __name__ == '__main__':

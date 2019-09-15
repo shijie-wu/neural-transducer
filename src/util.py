@@ -4,8 +4,10 @@ import os
 import random
 import string
 import sys
+import time
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import Enum
 from functools import partial
 from typing import List
@@ -60,22 +62,35 @@ def maybe_mkdir(filename):
             pass
 
 
+class LogFormatter():
+    def __init__(self):
+        self.start_time = time.time()
+
+    def format(self, record):
+        elapsed_seconds = round(record.created - self.start_time)
+
+        prefix = "%s - %s - %s" % (record.levelname, time.strftime('%x %X'),
+                                   timedelta(seconds=elapsed_seconds))
+        message = record.getMessage()
+        message = message.replace('\n', '\n' + ' ' * (len(prefix) + 3))
+        return "%s - %s" % (prefix, message) if message else ''
+
+
 def get_logger(log_file, log_level='info'):
     '''
     create logger and output to file and stdout
     '''
     assert log_level in ['info', 'debug']
-    fmt = '%(asctime)s %(levelname)s: %(message)s'
-    datefmt = '%Y-%m-%d %H:%M:%S'
+    log_formatter = LogFormatter()
     logger = logging.getLogger()
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[log_level]
     logger.setLevel(log_level)
 
     stream = logging.StreamHandler(sys.stdout)
-    stream.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
+    stream.setFormatter(log_formatter)
     logger.addHandler(stream)
     filep = logging.FileHandler(log_file, mode='a')
-    filep.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
+    filep.setFormatter(log_formatter)
     logger.addHandler(filep)
     return logger
 
@@ -108,7 +123,6 @@ class Evaluator(object):
 
 class BasicEvaluator(Evaluator):
     '''docstring for BasicEvaluator'''
-
     def evaluate(self, predict, ground_truth):
         '''
         evaluate single instance
@@ -185,7 +199,6 @@ class P2GEvaluator(G2PEvaluator):
 
 class PairBasicEvaluator(BasicEvaluator):
     '''docstring for PairBasicEvaluator'''
-
     def evaluate(self, predict, ground_truth):
         '''
         evaluate single instance
@@ -201,12 +214,10 @@ class PairG2PEvaluator(PairBasicEvaluator, G2PEvaluator):
 
 class TranslitEvaluator(BasicEvaluator):
     '''docstring for TranslitEvaluator'''
-
     def evaluate_all(self, data_iter, nb_data, model, decode_fn):
         '''
         evaluate all instances
         '''
-
         def helper(src, trgs):
             pred, _ = decode_fn(model, src)
             best_corr, best_dist, closest_ref = 0, float('inf'), None

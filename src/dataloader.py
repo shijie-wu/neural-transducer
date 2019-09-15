@@ -1,6 +1,7 @@
 import heapq
 import sys
 import xml.etree.ElementTree
+from typing import List, Optional, Dict
 from collections import defaultdict
 
 import numpy as np
@@ -23,25 +24,29 @@ STEP_IDX = 4
 
 class Dataloader(object):
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Seq2SeqDataLoader(Dataloader):
-    def __init__(self, train_file, dev_file, test_file=None, shuffle=False):
+    def __init__(self,
+                 train_file: List[str],
+                 dev_file: List[str],
+                 test_file: Optional[List[str]] = None,
+                 shuffle=False):
         super().__init__()
-        # assert os.path.isfile(train_file)
-        # assert os.path.isfile(dev_file)
-        # assert test_file is None or os.path.isfile(test_file)
-        self.train_file = train_file
-        self.dev_file = dev_file
-        self.test_file = test_file
+        self.train_file = train_file[0] if len(train_file) == 1 else train_file
+        self.dev_file = dev_file[0] if len(dev_file) == 1 else dev_file
+        self.test_file = test_file[0] if test_file and len(
+            test_file) == 1 else test_file
         self.shuffle = shuffle
-        self.batch_data = dict()
+        self.batch_data: Dict[str, List] = dict()
         self.nb_train, self.nb_dev, self.nb_test = 0, 0, 0
         self.nb_attr = 0
         self.source, self.target = self.build_vocab()
         self.source_vocab_size = len(self.source)
         self.target_vocab_size = len(self.target)
+        self.attr_c2i: Optional[Dict]
         if self.nb_attr > 0:
             self.source_c2i = {
                 c: i
@@ -195,8 +200,12 @@ class Seq2SeqDataLoader(Dataloader):
 
 
 class AlignSeq2SeqDataLoader(Seq2SeqDataLoader):
-    def __init__(self, train_file, dev_file, test_file=None, shuffle=False):
-        self.data = dict()
+    def __init__(self,
+                 train_file: List[str],
+                 dev_file: List[str],
+                 test_file: Optional[List[str]] = None,
+                 shuffle=False):
+        self.data: Dict[str, List] = dict()
         super().__init__(train_file, dev_file, test_file, shuffle)
 
     def sanity_check(self):
