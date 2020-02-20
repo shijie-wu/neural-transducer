@@ -109,3 +109,6 @@ data/
 decode/
 eval/
 release/
+exclude
+*.sh.e*
+*.sh.o*

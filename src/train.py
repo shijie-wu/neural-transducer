@@ -1,6 +1,7 @@
 '''
 train
 '''
+import math
 import os
 from functools import partial
 
@@ -9,6 +10,7 @@ from tqdm import tqdm
 
 import dataloader
 import model
+import transformer
 import util
 from decoding import Decode, get_decode_fn
 from model import dummy_mask
@@ -43,6 +45,10 @@ class Arch(util.NamedEnum):
     hardmono = 'hardmono'  # hard monotonic attention
     hmm = 'hmm'  # 0th-order hard attention without input-feeding
     hmmfull = 'hmmfull'  # 1st-order hard attention without input-feeding
+    transformer = 'transformer'
+    universaltransformer = 'universaltransformer'
+    tagtransformer = 'tagtransformer'
+    taguniversaltransformer = 'taguniversaltransformer'
 
 
 class Trainer(BaseTrainer):
@@ -60,10 +66,13 @@ class Trainer(BaseTrainer):
         parser.add_argument('--init', default='', help='control initialization')
         parser.add_argument('--dropout', default=0.2, type=float, help='dropout prob')
         parser.add_argument('--embed_dim', default=100, type=int, help='embedding dimension')
+        parser.add_argument('--nb_heads', default=4, type=int, help='number of attention head')
         parser.add_argument('--src_layer', default=1, type=int, help='source encoder number of layers')
         parser.add_argument('--trg_layer', default=1, type=int, help='target decoder number of layers')
         parser.add_argument('--src_hs', default=200, type=int, help='source encoder hidden dimension')
         parser.add_argument('--trg_hs', default=200, type=int, help='target decoder hidden dimension')
+        parser.add_argument('--label_smooth', default=0., type=float, help='label smoothing coeff')
+        parser.add_argument('--tie_trg_embed', default=False, action='store_true', help='tie decoder input & output embeddings')
         parser.add_argument('--arch', required=True, type=Arch, choices=list(Arch))
         parser.add_argument('--nb_sample', default=2, type=int, help='number of sample in REINFORCE approximation')
         parser.add_argument('--wid_siz', default=11, type=int, help='maximum transition in 1st-order hard attention')
@@ -139,7 +148,9 @@ class Trainer(BaseTrainer):
         kwargs['src_vocab_size'] = self.data.source_vocab_size
         kwargs['trg_vocab_size'] = self.data.target_vocab_size
         kwargs['embed_dim'] = params.embed_dim
+        kwargs['nb_heads'] = params.nb_heads
         kwargs['dropout_p'] = params.dropout
+        kwargs['tie_trg_embed'] = params.tie_trg_embed
         kwargs['src_hid_size'] = params.src_hs
         kwargs['trg_hid_size'] = params.trg_hs
         kwargs['src_nb_layers'] = params.src_layer
@@ -147,6 +158,7 @@ class Trainer(BaseTrainer):
         kwargs['nb_attr'] = self.data.nb_attr
         kwargs['nb_sample'] = params.nb_sample
         kwargs['wid_siz'] = params.wid_siz
+        kwargs['label_smooth'] = params.label_smooth
         kwargs['src_c2i'] = self.data.source_c2i
         kwargs['trg_c2i'] = self.data.target_c2i
         kwargs['attr_c2i'] = self.data.attr_c2i
@@ -170,7 +182,11 @@ class Trainer(BaseTrainer):
             Arch.approxihard: model.ApproxiHardTransducer,
             Arch.approxihardinputfeed: model.ApproxiHardInputFeedTransducer,
             Arch.hmm: model.HMMTransducer,
-            Arch.hmmfull: model.FullHMMTransducer
+            Arch.hmmfull: model.FullHMMTransducer,
+            Arch.transformer: transformer.Transformer,
+            Arch.universaltransformer: transformer.UniversalTransformer,
+            Arch.tagtransformer: transformer.TagTransformer,
+            Arch.taguniversaltransformer: transformer.TagUniversalTransformer,
         }
         # yapf: enable
         if params.indtag or params.mono:
@@ -229,8 +245,10 @@ class Trainer(BaseTrainer):
     def evaluate(self, mode, epoch_idx, decode_fn):
         self.model.eval()
         sampler, nb_instance = self.iterate_instance(mode)
+        decode_fn.reset()
         results = self.evaluator.evaluate_all(sampler, nb_instance, self.model,
                                               decode_fn)
+        decode_fn.reset()
         for result in results:
             self.logger.info(
                 f'{mode} {result.long_desc} is {result.res} at epoch {epoch_idx}'
@@ -241,6 +259,7 @@ class Trainer(BaseTrainer):
         self.model.eval()
         cnt = 0
         sampler, nb_instance = self.iterate_instance(mode)
+        decode_fn.reset()
         with open(f'{write_fp}.{mode}.tsv', 'w') as fp:
             fp.write(f'prediction\ttarget\tloss\tdist\n')
             for src, trg in tqdm(sampler(), total=nb_instance):
@@ -257,32 +276,37 @@ class Trainer(BaseTrainer):
                 fp.write(
                     f'{" ".join(pred)}\t{" ".join(trg)}\t{loss}\t{dist}\n')
                 cnt += 1
+        decode_fn.reset()
         self.logger.info(f'finished decoding {cnt} {mode} instance')
 
     def select_model(self):
-        best_fp, _, best_res = self.models[0]
-        best_acc_fp, _, best_acc = self.models[0]
-        best_devloss_fp, best_devloss, _ = self.models[0]
-        for fp, devloss, res in self.models:
+        best_res = [m for m in self.models if m.evaluation_result][0]
+        best_acc = [m for m in self.models if m.evaluation_result][0]
+        best_devloss = self.models[0]
+        for model in self.models:
+            if not model.evaluation_result:
+                continue
             if type(self.evaluator) == util.BasicEvaluator or \
                type(self.evaluator) == util.G2PEvaluator or \
                type(self.evaluator) == util.P2GEvaluator:
                 # [acc, edit distance / per ]
-                if res[0].res >= best_res[0].res and \
-                   res[1].res <= best_res[1].res:
-                    best_fp, best_res = fp, res
+                if model.evaluation_result[0].res >= best_res.evaluation_result[0].res and \
+                   model.evaluation_result[1].res <= best_res.evaluation_result[1].res:
+                    best_res = model
             elif type(self.evaluator) == util.TranslitEvaluator:
-                if res[0].res >= best_res[0].res and \
-                   res[1].res >= best_res[1].res:
-                    best_fp, best_res = fp, res
+                if model.evaluation_result[0].res >= best_res.evaluation_result[0].res and \
+                   model.evaluation_result[1].res >= best_res.evaluation_result[1].res:
+                    best_res = model
             else:
                 raise NotImplementedError
-            if res[0].res >= best_acc[0].res:
-                best_acc_fp, best_acc = fp, res
-            if devloss <= best_devloss:
-                best_devloss_fp, best_devloss = fp, devloss
+            if model.evaluation_result[0].res >= best_acc.evaluation_result[0].res:
+                best_acc = model
+            if model.devloss <= best_devloss.devloss:
+                best_devloss = model
         if self.params.bestacc:
-            best_fp = best_acc_fp
+            best_fp = best_acc.filepath
+        else:
+            best_fp = best_res.filepath
         return best_fp, set([best_fp])
 
 

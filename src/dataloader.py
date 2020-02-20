@@ -6,6 +6,7 @@ from collections import defaultdict
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from align import Aligner
 
@@ -74,17 +75,12 @@ class Seq2SeqDataLoader(Dataloader):
 
     def build_vocab(self):
         src_set, trg_set = set(), set()
-        cnts = []
-        files = [self.train_file, self.dev_file]
-        for fp in files:
-            cnt = 0
-            for src, trg in self.read_file(fp):
-                cnt += 1
-                src_set.update(src)
-                trg_set.update(trg)
-            cnts.append(cnt)
-        self.nb_train = cnts[0]
-        self.nb_dev = cnts[1]
+        self.nb_train = 0
+        for src, trg in self.read_file(self.train_file):
+            self.nb_train += 1
+            src_set.update(src)
+            trg_set.update(trg)
+        self.nb_dev = sum([1 for _ in self.read_file(self.dev_file)])
         if self.test_file is not None:
             self.nb_test = sum([1 for _ in self.read_file(self.test_file)])
         source = [PAD, BOS, EOS, UNK] + sorted(list(src_set))
@@ -94,48 +90,46 @@ class Seq2SeqDataLoader(Dataloader):
     def read_file(self, file):
         raise NotImplementedError
 
-    def _batch_helper(self, lst):
-        bs = len(lst)
-        srcs, trgs = [], []
-        max_src_len, max_trg_len = 0, 0
-        for _, src, trg in lst:
-            max_src_len = max(len(src), max_src_len)
-            max_trg_len = max(len(trg), max_trg_len)
-            srcs.append(src)
-            trgs.append(trg)
-        batch_src = torch.zeros((max_src_len, bs),
-                                dtype=torch.long,
-                                device=self.device)
-        batch_src_mask = torch.zeros((max_src_len, bs),
-                                     dtype=torch.float,
-                                     device=self.device)
-        batch_trg = torch.zeros((max_trg_len, bs),
-                                dtype=torch.long,
-                                device=self.device)
-        batch_trg_mask = torch.zeros((max_trg_len, bs),
-                                     dtype=torch.float,
-                                     device=self.device)
-        for i in range(bs):
-            for j in range(len(srcs[i])):
-                batch_src[j, i] = srcs[i][j]
-                batch_src_mask[j, i] = 1
-            for j in range(len(trgs[i])):
-                batch_trg[j, i] = trgs[i][j]
-                batch_trg_mask[j, i] = 1
-        return batch_src, batch_src_mask, batch_trg, batch_trg_mask
+    def _file_identifier(self, file):
+        return file
+
+    def list_to_tensor(self, lst: List[List[int]], max_seq_len=None):
+        max_len = max([len(x) for x in lst])
+        if max_seq_len is not None:
+            max_len = min(max_len, max_seq_len)
+        data = torch.zeros((max_len, len(lst)), dtype=torch.long)
+        for i, seq in tqdm(enumerate(lst), desc='build tensor'):
+            data[:len(seq), i] = torch.tensor(seq)
+        mask = (data > 0).float()
+        return data, mask
 
     def _batch_sample(self, batch_size, file):
-        if file not in self.batch_data:
+        key = self._file_identifier(file)
+        if key not in self.batch_data:
             lst = list()
-            for src, trg in self._iter_helper(file):
-                lst.append((len(src), src, trg))
-            self.batch_data[file] = sorted(lst, key=lambda x: x[0])
+            for src, trg in tqdm(self._iter_helper(file), desc='read file'):
+                lst.append((src, trg))
+            src_data, src_mask = self.list_to_tensor([src for src, _ in lst])
+            trg_data, trg_mask = self.list_to_tensor([trg for _, trg in lst])
+            self.batch_data[key] = (src_data, src_mask, trg_data, trg_mask)
 
-        lst = self.batch_data[file]
+        src_data, src_mask, trg_data, trg_mask = self.batch_data[key]
+        nb_example = len(src_data[0])
         if self.shuffle:
-            lst = np.random.permutation(lst)
-        for start in range(0, len(lst), batch_size):
-            yield self._batch_helper(lst[start:start + batch_size])
+            idx = np.random.permutation(nb_example)
+        else:
+            idx = np.arange(nb_example)
+        for start in range(0, nb_example, batch_size):
+            idx_ = idx[start:start + batch_size]
+            src_mask_b = src_mask[:, idx_]
+            trg_mask_b = trg_mask[:, idx_]
+            src_len = int(src_mask_b.sum(dim=0).max().item())
+            trg_len = int(trg_mask_b.sum(dim=0).max().item())
+            src_data_b = src_data[:src_len, idx_].to(self.device)
+            trg_data_b = trg_data[:trg_len, idx_].to(self.device)
+            src_mask_b = src_mask_b[:src_len].to(self.device)
+            trg_mask_b = trg_mask_b[:trg_len].to(self.device)
+            yield (src_data_b, src_mask_b, trg_data_b, trg_mask_b)
 
     def train_batch_sample(self, batch_size):
         yield from self._batch_sample(batch_size, self.train_file)
@@ -272,20 +266,14 @@ class AlignSeq2SeqDataLoader(Seq2SeqDataLoader):
 class SIGMORPHON2017Task1(Seq2SeqDataLoader):
     def build_vocab(self):
         char_set, tag_set = set(), set()
-        cnts = []
-        for fp in [self.train_file, self.dev_file]:
-            cnt = 0
-            for lemma, word, tags in self.read_file(fp):
-                cnt += 1
-                char_set.update(lemma)
-                char_set.update(word)
-                tag_set.update(tags)
-            cnts.append(cnt)
-        self.nb_train = cnts[0]
-        self.nb_dev = cnts[1]
-        if self.test_file is None:
-            self.nb_test = 0
-        else:
+        self.nb_train = 0
+        for lemma, word, tags in self.read_file(self.train_file):
+            self.nb_train += 1
+            char_set.update(lemma)
+            char_set.update(word)
+            tag_set.update(tags)
+        self.nb_dev = sum([1 for _ in self.read_file(self.dev_file)])
+        if self.test_file is not None:
             self.nb_test = sum([1 for _ in self.read_file(self.test_file)])
         chars = sorted(list(char_set))
         tags = sorted(list(tag_set))
@@ -297,7 +285,14 @@ class SIGMORPHON2017Task1(Seq2SeqDataLoader):
     def read_file(self, file):
         with open(file, 'r', encoding='utf-8') as fp:
             for line in fp.readlines():
-                lemma, word, tags = line.strip().split('\t')
+                line = line.strip()
+                if not line:
+                    continue
+                toks = line.split('\t')
+                if len(toks) != 3:
+                    print('WARNING: missing tokens', toks)
+                    continue
+                lemma, word, tags = toks
                 yield list(lemma), list(word), tags.split(';')
 
     def _iter_helper(self, file):
@@ -380,56 +375,42 @@ class AlignSIGMORPHON2017Task1(AlignSeq2SeqDataLoader, SIGMORPHON2017Task1):
                     attr[attr_idx] = self.attr_c2i.get(tag, UNK_IDX)
             yield src, trg, attr
 
-    def _batch_helper(self, lst):
-        bs = len(lst)
-        srcs, trgs, attrs = [], [], []
-        max_src_len, max_trg_len, max_nb_attr = 0, 0, 0
-        for _, src, trg, attr in lst:
-            max_src_len = max(len(src), max_src_len)
-            max_trg_len = max(len(trg), max_trg_len)
-            max_nb_attr = max(len(attr), max_nb_attr)
-            srcs.append(src)
-            trgs.append(trg)
-            attrs.append(attr)
-        batch_attr = torch.zeros((bs, max_nb_attr),
-                                 dtype=torch.long,
-                                 device=self.device)
-        batch_src = torch.zeros((max_src_len, bs),
-                                dtype=torch.long,
-                                device=self.device)
-        batch_src_mask = torch.zeros((max_src_len, bs),
-                                     dtype=torch.float,
-                                     device=self.device)
-        batch_trg = torch.zeros((max_trg_len, bs),
-                                dtype=torch.long,
-                                device=self.device)
-        batch_trg_mask = torch.zeros((max_trg_len, bs),
-                                     dtype=torch.float,
-                                     device=self.device)
-        for i in range(bs):
-            for j in range(len(attrs[i])):
-                batch_attr[i, j] = attrs[i][j]
-            for j in range(len(srcs[i])):
-                batch_src[j, i] = srcs[i][j]
-                batch_src_mask[j, i] = 1
-            for j in range(len(trgs[i])):
-                batch_trg[j, i] = trgs[i][j]
-                batch_trg_mask[j, i] = 1
-        return ((batch_src, batch_attr), batch_src_mask, batch_trg,
-                batch_trg_mask)
-
     def _batch_sample(self, batch_size, file):
-        if file not in self.batch_data:
+        key = self._file_identifier(file)
+        if key not in self.batch_data:
             lst = list()
-            for src, trg, attr in self._iter_helper(file):
-                lst.append((len(src), src, trg, attr))
-            self.batch_data[file] = sorted(lst, key=lambda x: x[0])
+            for src, trg, attr in tqdm(self._iter_helper(file),
+                                       desc='read file'):
+                lst.append((src, trg, attr))
+            src_data, src_mask = self.list_to_tensor(
+                [src for src, _, _ in lst])
+            trg_data, trg_mask = self.list_to_tensor(
+                [trg for _, trg, _ in lst])
+            attr_data, _ = self.list_to_tensor([attr for _, _, attr in lst])
+            attr_data = attr_data.transpose(0, 1)
+            data = ((src_data, attr_data), src_mask, trg_data, trg_mask)
+            self.batch_data[key] = data
 
-        lst = self.batch_data[file]
+        data = self.batch_data[key]
+        (src_data, attr_data), src_mask, trg_data, trg_mask = data
+        nb_example = len(src_data[0])
         if self.shuffle:
-            lst = np.random.permutation(lst)
-        for start in range(0, len(lst), batch_size):
-            yield self._batch_helper(lst[start:start + batch_size])
+            idx = np.random.permutation(nb_example)
+        else:
+            idx = np.arange(nb_example)
+        for start in range(0, nb_example, batch_size):
+            idx_ = idx[start:start + batch_size]
+            src_mask_b = src_mask[:, idx_]
+            trg_mask_b = trg_mask[:, idx_]
+            src_len = int(src_mask_b.sum(dim=0).max().item())
+            trg_len = int(trg_mask_b.sum(dim=0).max().item())
+            src_data_b = src_data[:src_len, idx_].to(self.device)
+            trg_data_b = trg_data[:trg_len, idx_].to(self.device)
+            src_mask_b = src_mask_b[:src_len].to(self.device)
+            trg_mask_b = trg_mask_b[:trg_len].to(self.device)
+            attr_data_b = attr_data[idx_, :].to(self.device)
+            yield ((src_data_b, attr_data_b), src_mask_b, trg_data_b,
+                   trg_mask_b)
 
     def _sample(self, file):
         for src, trg, tags in self._iter_helper(file):
@@ -462,56 +443,42 @@ class TagSIGMORPHON2017Task1(SIGMORPHON2017Task1):
                     attr[attr_idx] = self.attr_c2i.get(tag, UNK_IDX)
             yield src, trg, attr
 
-    def _batch_helper(self, lst):
-        bs = len(lst)
-        srcs, trgs, attrs = [], [], []
-        max_src_len, max_trg_len, max_nb_attr = 0, 0, 0
-        for _, src, trg, attr in lst:
-            max_src_len = max(len(src), max_src_len)
-            max_trg_len = max(len(trg), max_trg_len)
-            max_nb_attr = max(len(attr), max_nb_attr)
-            srcs.append(src)
-            trgs.append(trg)
-            attrs.append(attr)
-        batch_attr = torch.zeros((bs, max_nb_attr),
-                                 dtype=torch.long,
-                                 device=self.device)
-        batch_src = torch.zeros((max_src_len, bs),
-                                dtype=torch.long,
-                                device=self.device)
-        batch_src_mask = torch.zeros((max_src_len, bs),
-                                     dtype=torch.float,
-                                     device=self.device)
-        batch_trg = torch.zeros((max_trg_len, bs),
-                                dtype=torch.long,
-                                device=self.device)
-        batch_trg_mask = torch.zeros((max_trg_len, bs),
-                                     dtype=torch.float,
-                                     device=self.device)
-        for i in range(bs):
-            for j in range(len(attrs[i])):
-                batch_attr[i, j] = attrs[i][j]
-            for j in range(len(srcs[i])):
-                batch_src[j, i] = srcs[i][j]
-                batch_src_mask[j, i] = 1
-            for j in range(len(trgs[i])):
-                batch_trg[j, i] = trgs[i][j]
-                batch_trg_mask[j, i] = 1
-        return ((batch_src, batch_attr), batch_src_mask, batch_trg,
-                batch_trg_mask)
-
     def _batch_sample(self, batch_size, file):
-        if file not in self.batch_data:
+        key = self._file_identifier(file)
+        if key not in self.batch_data:
             lst = list()
-            for src, trg, attr in self._iter_helper(file):
-                lst.append((len(src), src, trg, attr))
-            self.batch_data[file] = sorted(lst, key=lambda x: x[0])
+            for src, trg, attr in tqdm(self._iter_helper(file),
+                                       desc='read file'):
+                lst.append((src, trg, attr))
+            src_data, src_mask = self.list_to_tensor(
+                [src for src, _, _ in lst])
+            trg_data, trg_mask = self.list_to_tensor(
+                [trg for _, trg, _ in lst])
+            attr_data, _ = self.list_to_tensor([attr for _, _, attr in lst])
+            attr_data = attr_data.transpose(0, 1)
+            data = ((src_data, attr_data), src_mask, trg_data, trg_mask)
+            self.batch_data[key] = data
 
-        lst = self.batch_data[file]
+        data = self.batch_data[key]
+        (src_data, attr_data), src_mask, trg_data, trg_mask = data
+        nb_example = len(src_data[0])
         if self.shuffle:
-            lst = np.random.permutation(lst)
-        for start in range(0, len(lst), batch_size):
-            yield self._batch_helper(lst[start:start + batch_size])
+            idx = np.random.permutation(nb_example)
+        else:
+            idx = np.arange(nb_example)
+        for start in range(0, nb_example, batch_size):
+            idx_ = idx[start:start + batch_size]
+            src_mask_b = src_mask[:, idx_]
+            trg_mask_b = trg_mask[:, idx_]
+            src_len = int(src_mask_b.sum(dim=0).max().item())
+            trg_len = int(trg_mask_b.sum(dim=0).max().item())
+            src_data_b = src_data[:src_len, idx_].to(self.device)
+            trg_data_b = trg_data[:trg_len, idx_].to(self.device)
+            src_mask_b = src_mask_b[:src_len].to(self.device)
+            trg_mask_b = trg_mask_b[:trg_len].to(self.device)
+            attr_data_b = attr_data[idx_, :].to(self.device)
+            yield ((src_data_b, attr_data_b), src_mask_b, trg_data_b,
+                   trg_mask_b)
 
     def _sample(self, file):
         for src, trg, tags in self._iter_helper(file):
@@ -547,22 +514,11 @@ class TagSIGMORPHON2019Task1(TagSIGMORPHON2017Task1):
         for fp in file:
             yield from super()._iter_helper(fp)
 
-    def _batch_sample(self, batch_size, file):
+    def _file_identifier(self, file):
         if isinstance(file, list):
-            key = tuple(sorted(file))
+            return tuple(sorted(file))
         else:
-            key = file
-        if key not in self.batch_data:
-            lst = list()
-            for src, trg, attr in self._iter_helper(file):
-                lst.append((len(src), src, trg, attr))
-            self.batch_data[key] = sorted(lst, key=lambda x: x[0])
-
-        lst = self.batch_data[key]
-        if self.shuffle:
-            lst = np.random.permutation(lst)
-        for start in range(0, len(lst), batch_size):
-            yield self._batch_helper(lst[start:start + batch_size])
+            return file
 
     def build_vocab(self):
         char_set, tag_set = set(), set()

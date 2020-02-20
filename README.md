@@ -29,10 +29,18 @@ This repo contains a set of neural transducer, e.g. sequence-to-sequence model, 
 ## Dependencies
 
 - python 3
-- pytorch
+- pytorch==1.4
 - numpy
 - tqdm
 - fire
+
+
+## Install
+
+```bash
+make
+```
+
 
 ## License
 

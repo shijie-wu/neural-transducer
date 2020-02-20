@@ -6,6 +6,7 @@ import torch
 import util
 from dataloader import BOS_IDX, EOS_IDX, STEP_IDX
 from model import Categorical, HardMonoTransducer, HMMTransducer, dummy_mask
+from transformer import Transformer
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -16,15 +17,70 @@ class Decode(util.NamedEnum):
     beam = 'beam'
 
 
+class Decoder(object):
+    def __init__(self,
+                 decoder_type,
+                 max_len=100,
+                 trg_bos=BOS_IDX,
+                 trg_eos=EOS_IDX,
+                 skip_attn=True):
+        self.type = decoder_type
+        self.max_len = max_len
+        self.trg_bos = trg_bos
+        self.trg_eos = trg_eos
+        self.skip_attn = skip_attn
+        self.cache = {}
+
+    def reset(self):
+        self.cache = {}
+
+    def src2str(self, src_sentence):
+        def tensor2str(tensor):
+            return str(tensor.view(-1).cpu().numpy())
+
+        if isinstance(src_sentence, tuple) and all([isinstance(x, torch.Tensor) for x in src_sentence]):
+            return str([tensor2str(x) for x in src_sentence])
+        elif isinstance(src_sentence, torch.Tensor):
+            return tensor2str(src_sentence)
+        else:
+            raise ValueError(src_sentence)
+
+
+    def __call__(self, transducer, src_sentence):
+        key = self.src2str(src_sentence)
+        if key in self.cache:
+            return self.cache[key]
+        if self.type == Decode.greedy:
+            output, attns = decode_greedy(transducer,
+                                          src_sentence,
+                                          max_len=self.max_len,
+                                          trg_bos=self.trg_bos,
+                                          trg_eos=self.trg_eos)
+        elif self.type == Decode.beam:
+            output, attns = decode_beam_search(transducer,
+                                               src_sentence,
+                                               max_len=self.max_len,
+                                               trg_bos=self.trg_bos,
+                                               trg_eos=self.trg_eos)
+        elif self.type == Decode.sample:
+            output, attns = decode_sample(transducer,
+                                          src_sentence,
+                                          max_len=self.max_len,
+                                          trg_bos=self.trg_bos,
+                                          trg_eos=self.trg_eos)
+        else:
+            raise ValueError
+        return_values = (output, None if self.skip_attn else attns)
+        # don't cache sampling results
+        if self.type == Decode.sample:
+            return return_values
+        else:
+            self.cache[key] = return_values
+            return self.cache[key]
+
+
 def get_decode_fn(decode, max_len=100):
-    if decode == Decode.greedy:
-        return partial(decode_greedy, max_len=max_len)
-    elif decode == Decode.beam:
-        return partial(decode_beam_search, max_len=max_len)
-    elif decode == Decode.sample:
-        return partial(decode_sample, max_len=max_len)
-    else:
-        raise ValueError
+    return Decoder(decode, max_len=max_len)
 
 
 def decode_sample(transducer,
@@ -124,6 +180,12 @@ def decode_greedy(transducer,
                                  max_len=max_len,
                                  trg_bos=BOS_IDX,
                                  trg_eos=EOS_IDX)
+    if isinstance(transducer, Transformer):
+        return decode_greedy_transformer(transducer,
+                                         src_sentence,
+                                         max_len=max_len,
+                                         trg_bos=BOS_IDX,
+                                         trg_eos=EOS_IDX)
     transducer.eval()
     src_mask = dummy_mask(src_sentence)
     enc_hs = transducer.encode(src_sentence)
@@ -221,6 +283,39 @@ def decode_greedy_hmm(transducer,
         word_emiss = torch.gather(emiss, -1, word_idx).view(1, 1, T)
         forward = forward + word_emiss
     return output, attns
+
+
+def decode_greedy_transformer(transducer,
+                              src_sentence,
+                              max_len=100,
+                              trg_bos=BOS_IDX,
+                              trg_eos=EOS_IDX):
+    '''
+    src_sentence: [seq_len]
+    '''
+    assert isinstance(transducer, Transformer)
+    transducer.eval()
+    src_mask = dummy_mask(src_sentence)
+    src_mask = (src_mask == 0).transpose(0, 1)
+    enc_hs = transducer.encode(src_sentence, src_mask)
+
+    output, attns = [trg_bos], []
+
+    for _ in range(max_len):
+        output_tensor = torch.tensor(output,
+                                     device=DEVICE).view(len(output), 1)
+        trg_mask = dummy_mask(output_tensor)
+        trg_mask = (trg_mask == 0).transpose(0, 1)
+
+        word_logprob = transducer.decode(enc_hs, src_mask, output_tensor,
+                                         trg_mask)
+        word_logprob = word_logprob[-1]
+
+        word = torch.max(word_logprob, dim=1)[1]
+        if word == trg_eos:
+            break
+        output.append(word.item())
+    return output[1:], attns
 
 
 Beam = namedtuple('Beam', 'seq_len log_prob hidden input partial_sent attn')

@@ -3,15 +3,17 @@ import glob
 import os
 import random
 import re
+from dataclasses import dataclass
 from functools import partial
 from math import ceil
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import torch
-import util
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
+
+import util
 
 tqdm.monitor_interval = 0
 
@@ -31,6 +33,7 @@ class Optimizer(util.NamedEnum):
 
 class Scheduler(util.NamedEnum):
     reducewhenstuck = 'reducewhenstuck'
+    warmupinvsqr = 'warmupinvsqr'
 
 
 def setup_seed(seed):
@@ -39,6 +42,13 @@ def setup_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+@dataclass
+class Evaluation:
+    filepath: str
+    devloss: float
+    evaluation_result: Optional[List[util.Eval]]
 
 
 class BaseTrainer(object):
@@ -64,8 +74,9 @@ class BaseTrainer(object):
         self.min_lr = 0
         self.scheduler = None
         self.evaluator = None
+        self.global_steps = 0
         self.last_devloss = float('inf')
-        self.models = list()
+        self.models: List[Evaluation] = list()
 
     def set_args(self):
         '''
@@ -81,6 +92,9 @@ class BaseTrainer(object):
         parser.add_argument('--load', default='', help='load model and continue training; with `smart`, recover training automatically')
         parser.add_argument('--bs', default=20, type=int, help='training batch size')
         parser.add_argument('--epochs', default=20, type=int, help='maximum training epochs')
+        parser.add_argument('--max_steps', default=0, type=int, help='maximum training steps')
+        parser.add_argument('--warmup_steps', default=4000, type=int, help='number of warm up steps')
+        parser.add_argument('--total_eval', default=50, type=int, help='total number of evaluation')
         parser.add_argument('--optimizer', default=Optimizer.adam, type=Optimizer, choices=list(Optimizer))
         parser.add_argument('--scheduler', default=Scheduler.reducewhenstuck, type=Scheduler, choices=list(Scheduler))
         parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
@@ -138,9 +152,9 @@ class BaseTrainer(object):
             for ev in evals_:
                 ev = ev.split('_')
                 evals.append(util.Eval(ev[0], ev[0], float(ev[1])))
-            models.append((epoch, (model, loss, evals)))
+            models.append((epoch, Evaluation(model, loss, evals)))
         self.models = [x[1] for x in sorted(models)]
-        return self.load_model(self.models[-1][0])
+        return self.load_model(self.models[-1].filepath)
 
     def setup_training(self):
         assert self.model is not None
@@ -174,6 +188,9 @@ class BaseTrainer(object):
                                                cooldown=params.cooldown,
                                                factor=params.discount_factor,
                                                min_lr=params.min_lr)
+        elif params.scheduler == Scheduler.warmupinvsqr:
+            self.scheduler = util.WarmupInverseSquareRootSchedule(
+                self.optimizer, params.warmup_steps)
         else:
             raise ValueError
 
@@ -195,11 +212,12 @@ class BaseTrainer(object):
         raise NotImplementedError
 
     def get_lr(self):
-        try:
-            return self.scheduler.get_lr()[0]
-        except:
-            assert isinstance(self.scheduler, ReduceLROnPlateau)
+        if isinstance(self.scheduler, ReduceLROnPlateau):
             return self.optimizer.param_groups[0]['lr']
+        try:
+            return self.scheduler.get_last_lr()[0]
+        except:
+            return self.scheduler.get_lr()[0]
 
     def train(self, epoch_idx, batch_size, max_norm):
         logger, model = self.logger, self.model
@@ -216,6 +234,9 @@ class BaseTrainer(object):
             logger.debug('loss %f with total grad norm %f', loss,
                          util.grad_norm(model.parameters()))
             self.optimizer.step()
+            if not isinstance(self.scheduler, ReduceLROnPlateau):
+                self.scheduler.step()
+            self.global_steps += 1
             losses += loss.item()
             cnt += 1
         loss = losses / cnt
@@ -264,27 +285,31 @@ class BaseTrainer(object):
         raise NotImplementedError
 
     def update_lr_and_stop_early(self, epoch_idx, devloss, estop):
-        prev_lr = self.get_lr()
-        self.scheduler.step(devloss)
-        curr_lr = self.get_lr()
-
         stop_early = True
-        if (self.last_devloss - devloss) < estop and \
-            prev_lr == curr_lr == self.min_lr:
-            self.logger.info(
-                'Early stopping triggered with epoch %d (previous dev loss: %f, current: %f)',
-                epoch_idx, self.last_devloss, devloss)
-            stop_status = stop_early
+
+        if isinstance(self.scheduler, ReduceLROnPlateau):
+            prev_lr = self.get_lr()
+            self.scheduler.step(devloss)
+            curr_lr = self.get_lr()
+
+            if (self.last_devloss - devloss) < estop and \
+                prev_lr == curr_lr == self.min_lr:
+                self.logger.info(
+                    'Early stopping triggered with epoch %d (previous dev loss: %f, current: %f)',
+                    epoch_idx, self.last_devloss, devloss)
+                stop_status = stop_early
+            else:
+                stop_status = not stop_early
+            self.last_devloss = devloss
         else:
             stop_status = not stop_early
-        self.last_devloss = devloss
         return stop_status
 
-    def save_model(self, epoch_idx, devloss, eval_res, model_fp):
+    def save_model(self, epoch_idx, devloss: float, eval_res: List[util.Eval], model_fp):
         eval_tag = ''.join(['{}_{}.'.format(e.desc, e.res) for e in eval_res])
         fp = f'{model_fp}.nll_{devloss:.4f}.{eval_tag}epoch_{epoch_idx}'
         torch.save(self.model, fp)
-        self.models.append((fp, devloss, eval_res))
+        self.models.append(Evaluation(fp, devloss, eval_res))
 
     def select_model(self):
         raise NotImplementedError
@@ -313,10 +338,9 @@ class BaseTrainer(object):
     def cleanup(self, saveall, save_fps, model_fp):
         if not saveall:
             for model in self.models:
-                fp = model[0]
-                if fp in save_fps:
+                if model.filepath in save_fps:
                     continue
-                os.remove(fp)
+                os.remove(model.filepath)
         os.remove(f'{model_fp}.progress')
 
     def run(self, start_epoch, decode_fn=None):
@@ -326,8 +350,24 @@ class BaseTrainer(object):
         self.checklist_before_run()
         finish = False
         params = self.params
-        for epoch_idx in range(start_epoch, start_epoch + params.epochs):
+        steps_per_epoch = ceil(self.data.nb_train / params.bs)
+        if params.max_steps > 0:
+            max_epochs = ceil(params.max_steps / steps_per_epoch)
+        else:
+            max_epochs = params.epochs
+        params.max_steps = max_epochs * steps_per_epoch
+        self.logger.info(
+            f'maximum training {params.max_steps} steps ({max_epochs} epochs)')
+        if params.total_eval > 0:
+            eval_every = max(max_epochs // params.total_eval, 1)
+        else:
+            eval_every = 1
+        self.logger.info(f'evaluate every {eval_every} epochs')
+        for epoch_idx in range(start_epoch, max_epochs):
             self.train(epoch_idx, params.bs, params.max_norm)
+            if not (epoch_idx and (epoch_idx % eval_every == 0
+                                   or epoch_idx + 1 == max_epochs)):
+                continue
             with torch.no_grad():
                 devloss = self.calc_loss(DEV, params.bs, epoch_idx)
                 eval_res = self.evaluate(DEV, epoch_idx, decode_fn)
@@ -339,5 +379,6 @@ class BaseTrainer(object):
         if finish or params.cleanup_anyway:
             best_fp, save_fps = self.select_model()
             with torch.no_grad():
-                self.reload_and_test(params.model, best_fp, params.bs, decode_fn)
+                self.reload_and_test(params.model, best_fp, params.bs,
+                                     decode_fn)
             self.cleanup(params.saveall, save_fps, params.model)

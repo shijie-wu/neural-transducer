@@ -13,6 +13,7 @@ from functools import partial
 from typing import List
 
 import numpy as np
+from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 
 from dataloader import BOS_IDX, EOS_IDX, STEP_IDX
@@ -48,6 +49,23 @@ def grad_norm(parameters, norm_type=2):
             total_norm += param_norm**norm_type
         total_norm = total_norm**(1. / norm_type)
     return total_norm
+
+
+class WarmupInverseSquareRootSchedule(LambdaLR):
+    """ Linear warmup and then inverse square root decay.
+        Linearly increases learning rate from 0 to 1 over `warmup_steps` training steps.
+        Inverse square root decreases learning rate from 1. to 0. over remaining steps.
+    """
+    def __init__(self, optimizer, warmup_steps, last_epoch=-1):
+        self.warmup_steps = warmup_steps
+        self.decay_factor = warmup_steps**0.5
+        super(WarmupInverseSquareRootSchedule,
+              self).__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
+
+    def lr_lambda(self, step):
+        if step < self.warmup_steps:
+            return float(step) / float(max(1, self.warmup_steps))
+        return self.decay_factor * step**-0.5
 
 
 def maybe_mkdir(filename):
@@ -230,7 +248,10 @@ class TranslitEvaluator(BasicEvaluator):
                     closest_ref = trg
             lcs = (len(closest_ref) + len(pred) - best_dist) / 2
             r = lcs / len(closest_ref)
-            p = lcs / len(pred)
+            try:
+                p = lcs / len(pred)
+            except:
+                p = 0
             f = 2 * r * p / (r + p)
             return best_corr, f
 
