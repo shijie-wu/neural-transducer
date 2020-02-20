@@ -177,6 +177,12 @@ class BasicEvaluator(Evaluator):
         ]
 
 
+class HistnormEvaluator(BasicEvaluator):
+    def evaluate(self, predict, ground_truth):
+        correct, dist = super().evaluate(predict, ground_truth)
+        return correct, dist / len(ground_truth)
+
+
 class G2PEvaluator(BasicEvaluator):
     def evaluate(self, predict, ground_truth):
         correct, dist = super().evaluate(predict, ground_truth)

@@ -560,6 +560,14 @@ class TagLemmatization(Lemmatization, TagSIGMORPHON2017Task1):
     pass
 
 
+class Histnorm(Seq2SeqDataLoader):
+    def read_file(self, file):
+        with open(file, 'r', encoding='utf-8') as fp:
+            for line in fp.readlines():
+                historical, modern = line.strip().split('\t')
+                yield list(historical), list(modern)
+
+
 class StandardG2P(Seq2SeqDataLoader):
     def read_file(self, file):
         try:

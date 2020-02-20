@@ -25,6 +25,7 @@ class Data(util.NamedEnum):
     g2p = 'g2p'
     p2g = 'p2g'
     news15 = 'news15'
+    histnorm = 'histnorm'
     sigmorphon16task1 = 'sigmorphon16task1'
     sigmorphon17task1 = 'sigmorphon17task1'
     sigmorphon19task1 = 'sigmorphon19task1'
@@ -119,6 +120,8 @@ class Trainer(BaseTrainer):
                 self.data = dataloader.StandardP2G(train, dev, test, params.shuffle)
             elif dataset == Data.news15:
                 self.data = dataloader.Transliteration(train, dev, test, params.shuffle)
+            elif dataset == Data.histnorm:
+                self.data = dataloader.Histnorm(train, dev, test, params.shuffle)
             elif dataset == Data.sigmorphon16task1:
                 if params.indtag:
                     self.data = dataloader.TagSIGMORPHON2016Task1(train, dev, test, params.shuffle)
@@ -239,6 +242,8 @@ class Trainer(BaseTrainer):
                 self.evaluator = util.G2PEvaluator()
             elif dataset == Data.p2g:
                 self.evaluator = util.P2GEvaluator()
+            elif dataset == Data.histnorm:
+                self.evaluator = util.HistnormEvaluator()
             else:
                 self.evaluator = util.BasicEvaluator()
 
@@ -288,7 +293,8 @@ class Trainer(BaseTrainer):
                 continue
             if type(self.evaluator) == util.BasicEvaluator or \
                type(self.evaluator) == util.G2PEvaluator or \
-               type(self.evaluator) == util.P2GEvaluator:
+               type(self.evaluator) == util.P2GEvaluator or \
+               type(self.evaluator) == util.HistnormEvaluator:
                 # [acc, edit distance / per ]
                 if model.evaluation_result[0].res >= best_res.evaluation_result[0].res and \
                    model.evaluation_result[1].res <= best_res.evaluation_result[1].res:
