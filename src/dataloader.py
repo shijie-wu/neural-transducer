@@ -604,3 +604,50 @@ class Transliteration(Seq2SeqDataLoader):
 
 class AlignTransliteration(AlignSeq2SeqDataLoader, Transliteration):
     pass
+
+
+class WikipronUnimorph(SIGMORPHON2017Task1):
+    def build_vocab(self):
+        source_set, target_set, tag_set = set(), set(), set()
+        self.nb_train = 0
+        for word, phon_word, tags in self.read_file(self.train_file):
+            self.nb_train += 1
+            source_set.update(word)
+            target_set.update(phon_word)
+            tag_set.update(tags)
+        self.nb_dev = sum([1 for _ in self.read_file(self.dev_file)])
+        if self.test_file is not None:
+            self.nb_test = sum([1 for _ in self.read_file(self.test_file)])
+        source = sorted(list(source_set))
+        target = sorted(list(target_set))
+        tags = sorted(list(tag_set))
+        self.nb_attr = len(tags)
+        source = [PAD, BOS, EOS, UNK] + source + tags
+        target = [PAD, BOS, EOS, UNK] + target
+        return source, target
+
+    def read_file(self, file):
+        with open(file, 'r', encoding='utf-8') as fp:
+            for line in fp.readlines():
+                line = line.strip()
+                toks = line.split('\t')
+                if len(toks) != 5:
+                    continue
+                lemma, word, tags, phon_lemma, phon_word = toks
+                yield list(word), phon_word.split(), tags.split(';')
+
+
+class WikipronUnimorphNoTag(StandardG2P):
+    def read_file(self, file):
+        with open(file, 'r', encoding='utf-8') as fp:
+            for line in fp.readlines():
+                line = line.strip()
+                toks = line.split('\t')
+                if len(toks) != 5:
+                    continue
+                lemma, word, tags, phon_lemma, phon_word = toks
+                yield list(word), phon_word.split()
+
+
+class TagWikipronUnimorph(WikipronUnimorph, TagSIGMORPHON2017Task1):
+    pass

@@ -34,6 +34,8 @@ class Data(util.NamedEnum):
     lemmanotag = 'lemmanotag'
     lematus = 'lematus'
     unimorph = 'unimorph'
+    wikiphon_unimorph = 'wikiphon_unimorph'
+    wikiphon_unimorph_notag = 'wikiphon_unimorph_notag'
 
 
 class Arch(util.NamedEnum):
@@ -108,6 +110,13 @@ class Trainer(BaseTrainer):
                     self.data = dataloader.TagUnimorph(train, dev, test, params.shuffle)
                 else:
                     self.data = dataloader.Unimorph(train, dev, test, params.shuffle)
+            elif dataset == Data.wikiphon_unimorph:
+                if params.indtag:
+                    self.data = dataloader.TagWikipronUnimorph(train, dev, test, params.shuffle)
+                else:
+                    self.data = dataloader.WikipronUnimorph(train, dev, test, params.shuffle)
+            elif dataset == Data.wikiphon_unimorph_notag:
+                self.data = dataloader.WikipronUnimorphNoTag(train, dev, test, params.shuffle)
             elif dataset == Data.sigmorphon19task1:
                 assert isinstance(train, list) and len(train) == 2 and params.indtag
                 self.data = dataloader.TagSIGMORPHON2019Task1(train, dev, test, params.shuffle)
