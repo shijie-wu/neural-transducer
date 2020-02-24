@@ -94,7 +94,7 @@ class BaseTrainer(object):
         parser.add_argument('--epochs', default=20, type=int, help='maximum training epochs')
         parser.add_argument('--max_steps', default=0, type=int, help='maximum training steps')
         parser.add_argument('--warmup_steps', default=4000, type=int, help='number of warm up steps')
-        parser.add_argument('--total_eval', default=50, type=int, help='total number of evaluation')
+        parser.add_argument('--total_eval', default=-1, type=int, help='total number of evaluation')
         parser.add_argument('--optimizer', default=Optimizer.adam, type=Optimizer, choices=list(Optimizer))
         parser.add_argument('--scheduler', default=Scheduler.reducewhenstuck, type=Scheduler, choices=list(Scheduler))
         parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
