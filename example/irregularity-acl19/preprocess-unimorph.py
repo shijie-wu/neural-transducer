@@ -24,6 +24,7 @@ def get_args():
     parser.add_argument('--outdir')
     parser.add_argument('--nfold', default=10, type=int)
     parser.add_argument('--nchar', default=4, type=int)
+    parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--log', action='store_true')
     parser.add_argument('--prefix', action='store_true')
     parser.add_argument('--suffix', action='store_true')
@@ -160,8 +161,9 @@ def main():
                               opt.prefix, opt.suffix)
     if opt.outdir:
         maybe_mkdir(opt.outdir)
-        lemma_folds = np.array_split(
-            np.random.permutation(clean_lemma), opt.nfold)
+        clean_lemma = sorted(clean_lemma)
+        clean_lemma = np.random.RandomState(opt.seed).permutation(clean_lemma)
+        lemma_folds = np.array_split(clean_lemma, opt.nfold)
         for i in range(opt.nfold):
             ids = list(range(opt.nfold))
             dev = ids[i]

@@ -25,6 +25,7 @@ def get_args():
     parser.add_argument('--outdir')
     parser.add_argument('--split', default=0.2, type=float)
     parser.add_argument('--nchar', default=4, type=int)
+    parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--mode', required=True, choices=['odonnell', 'albright'])
     parser.add_argument('--log', action='store_true')
     parser.add_argument('--prefix', action='store_true')
@@ -160,7 +161,8 @@ class Preprocesser(object):
 
         if opt.outdir:
             maybe_mkdir(opt.outdir)
-            lemma = np.random.permutation(lemma)
+            lemma = sorted(lemma)
+            lemma = np.random.RandomState(opt.seed).permutation(lemma)
             split = int(opt.split * len(lemma))
             dev = lemma[:split]
             train = lemma[split:]
