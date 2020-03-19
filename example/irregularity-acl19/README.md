@@ -31,7 +31,7 @@ sh example/irregularity-acl19/run-unimorph.sh $lang $fold
 done
 ```
 
-The output in `model/unimorph/large/monotag-hmm/{lang}-{fold}.decode.test.tsv` (the `loss` column) should contains `log( p(inflected form|lemma, tags) ) / (len(inflected form) + 1)`, including a special end-of-sequence token `</s>`.
+The output in `model/unimorph/large/monotag-hmm/{lang}-{fold}.decode.test.tsv` (the `loss` column) should contains `-log( p(inflected form|lemma, tags) ) / (len(inflected form) + 1)`, including a special end-of-sequence token `</s>`.
 
 ### Count WikiPedia
 
