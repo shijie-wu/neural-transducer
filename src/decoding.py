@@ -341,7 +341,7 @@ def decode_beam_search(transducer,
                                 trg_bos=BOS_IDX,
                                 trg_eos=EOS_IDX)
 
-    if isinstance(transducer, HardMonoTransducer):
+    if isinstance(transducer, HMMTransducer):
         return decode_beam_hmm(transducer,
                                src_sentence,
                                max_len=max_len,
