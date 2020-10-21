@@ -64,6 +64,7 @@ class Trainer(BaseTrainer):
         parser.add_argument('--dataset', required=True, type=Data, choices=list(Data))
         parser.add_argument('--max_seq_len', default=128, type=int)
         parser.add_argument('--max_decode_len', default=128, type=int)
+        parser.add_argument('--decode_beam_size', default=5, type=int)
         parser.add_argument('--init', default='', help='control initialization')
         parser.add_argument('--dropout', default=0.2, type=float, help='dropout prob')
         parser.add_argument('--embed_dim', default=100, type=int, help='embedding dimension')
@@ -322,7 +323,7 @@ def main():
     '''
     trainer = Trainer()
     params = trainer.params
-    decode_fn = get_decode_fn(params.decode, params.max_decode_len)
+    decode_fn = get_decode_fn(params.decode, params.max_decode_len, params.decode_beam_size)
     trainer.load_data(params.dataset, params.train, params.dev, params.test)
     trainer.setup_evalutator()
     if params.load and params.load != '0':
