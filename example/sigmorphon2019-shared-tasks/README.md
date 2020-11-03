@@ -1,6 +1,6 @@
 # SIGMORPHON 2019 Shared Tasks Baseline
 
-Arya D McCarthy, Ekaterina Vylomova, Shijie Wu, Chaitanya Malaviya, Lawrence Wolf-Sonkin, Garrett Nicolai, Miikka Silfverberg, Sebastian J Mielke, Jeffrey Heinz, Ryan Cotterell, and Mans Hulden. [*The SIGMORPHON 2019 Shared Task: Morphological Analysis in Context and Cross-Lingual Transfer for Inflection*](https://www.aclweb.org/anthology/W19-4226/). ACL. 2019.
+Arya D McCarthy, Ekaterina Vylomova, Shijie Wu, Chaitanya Malaviya, Lawrence Wolf-Sonkin, Garrett Nicolai, Miikka Silfverberg, Sebastian J Mielke, Jeffrey Heinz, Ryan Cotterell, and Mans Hulden. [*The SIGMORPHON 2019 Shared Task: Morphological Analysis in Context and Cross-Lingual Transfer for Inflection*](https://www.aclweb.org/anthology/W19-4226/). SIGMORPHON. 2019.
 
 
 ## Task 1: crosslingual-inflection-baseline
@@ -9,7 +9,7 @@ Arya D McCarthy, Ekaterina Vylomova, Shijie Wu, Chaitanya Malaviya, Lawrence Wol
 
 Available for all baselines [here](https://docs.google.com/spreadsheets/d/1vvSuy2LBarS20zK8lg_YCTauntDsmoxfqSaSrAQsJrM/edit?usp=sharing).
 
-### Train from Scratch
+### Training from Scratch
 
 ```bash
 dir=example/sigmorphon2019-shared-tasks
@@ -23,7 +23,7 @@ sh $dir/run-task1-monotag.sh hmm adyghe--kabardian
 sh $dir/run-task1-monotag.sh hmmfull adyghe--kabardian
 ```
 
-### Decode trained Model
+### Decoding with Pretrained Model
 
 ```bash
 dir=example/sigmorphon2019-shared-tasks

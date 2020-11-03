@@ -1,10 +1,76 @@
+# edit file #
+###################
+.Session.vim
+.nohup.out
+*.swp
+*.sublime*
+\#*\#
+*~
+.idea
+
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+*.pyc
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+
+# latex output #
+################
+*.aux
+*.out
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+*.skim
+
+# Latex #
+#########
+*.fls
+*.fdb_latexmk
+*.pdf
+*.dvi
+*.bbl
+*.blg
+
+# vscode #
+##########
+.vscode
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
-*.so
 
 # Distribution / packaging
 .Python
@@ -52,7 +118,6 @@ coverage.xml
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 db.sqlite3
 
@@ -112,3 +177,4 @@ release/
 exclude
 *.sh.e*
 *.sh.o*
+task0*
