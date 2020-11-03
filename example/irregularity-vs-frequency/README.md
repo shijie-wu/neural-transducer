@@ -20,14 +20,14 @@ mkdir -p data/unimorph
 git clone https://github.com/unimorph/$lang.git data/unimorph/$lang
 
 # prepare data
-python example/irregularity-acl19/preprocess-unimorph.py \
+python example/irregularity-vs-frequency/preprocess-unimorph.py \
     --infile data/unimorph/$lang/$lang \
     --outdir data/unimorph/$lang/split/$lang \
     --nfold 10 --nchar 1 --prefix --suffix
 
 # train models
 for fold in $(seq 1 $nfold); do
-sh example/irregularity-acl19/run-unimorph.sh $lang $fold
+sh example/irregularity-vs-frequency/run-unimorph.sh $lang $fold
 done
 ```
 
@@ -48,7 +48,7 @@ pip install gensim langcodes nltk smart_open
 python -m gensim.scripts.segment_wiki -i -f enwiki-latest-pages-articles.xml.bz2 -o enwiki-latest.json.gz
 
 # count wikipedia
-python example/irregularity-acl19/count-wiki.py \
+python example/irregularity-vs-frequency/count-wiki.py \
     --wiki enwiki-latest.json.gz \
     --testfiles data/unimorph/eng/split/eng.* \
     --lang en \
@@ -66,7 +66,7 @@ wget https://www.dropbox.com/s/wccovnvhaz0tpq3/pasttense-adult-PTB.verbs.csv -O 
 
 # prepare data
 for mode in albright odonnell; do
-python example/irregularity-acl19/preprocess-eng-past.py \
+python example/irregularity-vs-frequency/preprocess-eng-past.py \
     --unimorph data/unimorph/eng/eng \
     --past data/unimorph/eng.$mode/eng.$mode \
     --outdir data/unimorph/eng.$mode/eng.$mode \
@@ -75,6 +75,6 @@ done
 
 # train models
 for mode in albright odonnell; do
-sh example/irregularity-acl19/run-eng-past.sh $mode
+sh example/irregularity-vs-frequency/run-eng-past.sh $mode
 done
 ```

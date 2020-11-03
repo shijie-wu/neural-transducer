@@ -21,14 +21,14 @@ git clone https://github.com/sigmorphon/conll2017.git
 cd ..
 
 # Run soft attention (SOFT)
-sh example/hard-monotonic-attention-acl19/sigmorphon17task1/run-sigmorphon17task1-large-tag.sh soft $lang
+sh example/hard-monotonic-attention/sigmorphon17task1/run-sigmorphon17task1-large-tag.sh soft $lang
 
 # Run 0th-order Hard Attentin (0-HARD)
-sh example/hard-monotonic-attention-acl19/sigmorphon17task1/run-sigmorphon17task1-large-tag.sh hard $lang
+sh example/hard-monotonic-attention/sigmorphon17task1/run-sigmorphon17task1-large-tag.sh hard $lang
 
 # Run 0th-order Hard Monotonic Attentin (0-MONO) (OUR)
-sh example/hard-monotonic-attention-acl19/sigmorphon17task1/run-sigmorphon17task1-large-monotag.sh hmm $lang
+sh example/hard-monotonic-attention/sigmorphon17task1/run-sigmorphon17task1-large-monotag.sh hmm $lang
 
 # Run 1st-order Hard Monotonic Attentin (1-MONO) (OUR)
-sh example/hard-monotonic-attention-acl19/sigmorphon17task1/run-sigmorphon17task1-large-monotag.sh hmmfull $lang
+sh example/hard-monotonic-attention/sigmorphon17task1/run-sigmorphon17task1-large-monotag.sh hmmfull $lang
 ```
