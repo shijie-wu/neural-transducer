@@ -1,6 +1,6 @@
-'''
+"""
 all model
-'''
+"""
 import math
 from collections import namedtuple
 
@@ -22,14 +22,14 @@ class Identity(nn.Module):
 
 
 class StackedLSTM(nn.Module):
-    '''
+    """
     step-by-step stacked LSTM
-    '''
+    """
 
     def __init__(self, input_siz, rnn_siz, nb_layers, dropout):
-        '''
+        """
         init
-        '''
+        """
         super().__init__()
         self.nb_layers = nb_layers
         self.rnn_siz = rnn_siz
@@ -41,9 +41,9 @@ class StackedLSTM(nn.Module):
             input_siz = rnn_siz
 
     def get_init_hx(self, batch_size):
-        '''
+        """
         initial h0
-        '''
+        """
         h_0_s, c_0_s = [], []
         for _ in range(self.nb_layers):
             h_0 = torch.zeros((batch_size, self.rnn_siz), device=DEVICE)
@@ -53,9 +53,9 @@ class StackedLSTM(nn.Module):
         return (h_0_s, c_0_s)
 
     def forward(self, input, hidden):
-        '''
+        """
         dropout after all output except the last one
-        '''
+        """
         h_0, c_0 = hidden
         h_1, c_1 = [], []
         for i, layer in enumerate(self.layers):
@@ -71,16 +71,16 @@ class StackedLSTM(nn.Module):
 
 
 class Attention(nn.Module):
-    '''
+    """
     attention with mask
-    '''
+    """
 
     def forward(self, ht, hs, mask, weighted_ctx=True):
-        '''
+        """
         ht: batch x ht_dim
         hs: (seq_len x batch x hs_dim, seq_len x batch x ht_dim)
         mask: seq_len x batch
-        '''
+        """
         hs, hs_ = hs
         # seq_len, batch, _ = hs.size()
         hs = hs.transpose(0, 1)
@@ -110,16 +110,29 @@ class Attention(nn.Module):
 
 
 class Transducer(nn.Module):
-    '''
+    """
     seq2seq with soft attention baseline
-    '''
+    """
 
-    def __init__(self, *, src_vocab_size, trg_vocab_size, embed_dim,
-                 src_hid_size, src_nb_layers, trg_hid_size, trg_nb_layers,
-                 dropout_p, src_c2i, trg_c2i, attr_c2i, **kwargs):
-        '''
+    def __init__(
+        self,
+        *,
+        src_vocab_size,
+        trg_vocab_size,
+        embed_dim,
+        src_hid_size,
+        src_nb_layers,
+        trg_hid_size,
+        trg_nb_layers,
+        dropout_p,
+        src_c2i,
+        trg_c2i,
+        attr_c2i,
+        **kwargs
+    ):
+        """
         init
-        '''
+        """
         super().__init__()
         self.src_vocab_size = src_vocab_size
         self.trg_vocab_size = trg_vocab_size
@@ -130,18 +143,16 @@ class Transducer(nn.Module):
         self.trg_nb_layers = trg_nb_layers
         self.dropout_p = dropout_p
         self.src_c2i, self.trg_c2i, self.attr_c2i = src_c2i, trg_c2i, attr_c2i
-        self.src_embed = nn.Embedding(
-            src_vocab_size, embed_dim, padding_idx=PAD_IDX)
-        self.trg_embed = nn.Embedding(
-            trg_vocab_size, embed_dim, padding_idx=PAD_IDX)
+        self.src_embed = nn.Embedding(src_vocab_size, embed_dim, padding_idx=PAD_IDX)
+        self.trg_embed = nn.Embedding(trg_vocab_size, embed_dim, padding_idx=PAD_IDX)
         self.enc_rnn = nn.LSTM(
             embed_dim,
             src_hid_size,
             src_nb_layers,
             bidirectional=True,
-            dropout=dropout_p)
-        self.dec_rnn = StackedLSTM(embed_dim, trg_hid_size, trg_nb_layers,
-                                   dropout_p)
+            dropout=dropout_p,
+        )
+        self.dec_rnn = StackedLSTM(embed_dim, trg_hid_size, trg_nb_layers, dropout_p)
         self.out_dim = trg_hid_size + src_hid_size * 2
         self.scale_enc_hs = nn.Linear(src_hid_size * 2, trg_hid_size)
         self.attn = Attention()
@@ -150,17 +161,17 @@ class Transducer(nn.Module):
         self.dropout = nn.Dropout(dropout_p)
 
     def encode(self, src_batch):
-        '''
+        """
         encoder
-        '''
+        """
         enc_hs, _ = self.enc_rnn(self.dropout(self.src_embed(src_batch)))
         scale_enc_hs = self.scale_enc_hs(enc_hs)
         return enc_hs, scale_enc_hs
 
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        '''
+        """
         decode step
-        '''
+        """
         h_t, hidden = self.dec_rnn(input_, hidden)
         ctx, attn = self.attn(h_t, enc_hs, enc_mask)
         # Concatenate the ht and ctx
@@ -173,9 +184,9 @@ class Transducer(nn.Module):
         return word_logprob, hidden, attn
 
     def decode(self, enc_hs, enc_mask, trg_batch):
-        '''
+        """
         enc_hs: tuple(enc_hs, scale_enc_hs)
-        '''
+        """
         trg_seq_len = trg_batch.size(0)
         trg_bat_siz = trg_batch.size(1)
         trg_embed = self.dropout(self.trg_embed(trg_batch))
@@ -183,15 +194,14 @@ class Transducer(nn.Module):
         hidden = self.dec_rnn.get_init_hx(trg_bat_siz)
         for idx in range(trg_seq_len - 1):
             input_ = trg_embed[idx, :]
-            word_logprob, hidden, _ = self.decode_step(enc_hs, enc_mask,
-                                                       input_, hidden)
+            word_logprob, hidden, _ = self.decode_step(enc_hs, enc_mask, input_, hidden)
             output += [word_logprob]
         return torch.stack(output)
 
     def forward(self, src_batch, src_mask, trg_batch):
-        '''
+        """
         only for training
-        '''
+        """
         # trg_seq_len, batch_size = trg_batch.size()
         enc_hs = self.encode(src_batch)
         # output: [trg_seq_len-1, batch_size, vocab_siz]
@@ -204,13 +214,12 @@ class Transducer(nn.Module):
         return params
 
     def loss(self, predict, target):
-        '''
+        """
         compute loss
-        '''
+        """
         return F.nll_loss(
-            predict.view(-1, self.trg_vocab_size),
-            target.view(-1),
-            ignore_index=PAD_IDX)
+            predict.view(-1, self.trg_vocab_size), target.view(-1), ignore_index=PAD_IDX
+        )
 
     def get_loss(self, data):
         src, src_mask, trg, _ = data
@@ -219,7 +228,7 @@ class Transducer(nn.Module):
         return loss
 
 
-HMMState = namedtuple('HMMState', 'init trans emiss')
+HMMState = namedtuple("HMMState", "init trans emiss")
 
 
 class HMM(object):
@@ -256,15 +265,14 @@ class HMM(object):
         # fwd = pi * b[:, O[0]]
         # fwd = self.initial * self.emiss(0, seq[0])
         fwd = self.initial + self.emiss(0, seq[0], ignore_index=ignore_index)
-        #induction:
+        # induction:
         for t in range(T - 1):
             # fwd[t + 1] = np.dot(fwd[t], a) * b[:, O[t + 1]]
             # fwd = torch.bmm(fwd, self.transition[t]) * self.emiss(
             #     t + 1, seq[t + 1])
             fwd = fwd + self.transition[t].transpose(1, 2)
             fwd = fwd.logsumexp(dim=-1, keepdim=True).transpose(1, 2)
-            fwd = fwd + self.emiss(
-                t + 1, seq[t + 1], ignore_index=ignore_index)
+            fwd = fwd + self.emiss(t + 1, seq[t + 1], ignore_index=ignore_index)
         return fwd
 
 
@@ -276,8 +284,13 @@ class HMMTransducer(Transducer):
     def loss(self, predict, target):
         assert isinstance(predict, HMMState)
         seq_len = target.shape[0]
-        hmm = HMM(predict.init.shape[-1], self.trg_vocab_size, predict.init,
-                  predict.trans, predict.emiss)
+        hmm = HMM(
+            predict.init.shape[-1],
+            self.trg_vocab_size,
+            predict.init,
+            predict.trans,
+            predict.emiss,
+        )
         loss = hmm.p_x(target, ignore_index=PAD_IDX)
         return -torch.logsumexp(loss, dim=-1).mean() / seq_len
 
@@ -290,8 +303,7 @@ class HMMTransducer(Transducer):
         initial, transition, emission = None, list(), list()
         for idx in range(trg_seq_len - 1):
             input_ = trg_embed[idx, :]
-            trans, emiss, hidden = self.decode_step(enc_hs, enc_mask, input_,
-                                                    hidden)
+            trans, emiss, hidden = self.decode_step(enc_hs, enc_mask, input_, hidden)
             if idx == 0:
                 initial = trans[:, 0].unsqueeze(1)
                 emission += [emiss]
@@ -309,9 +321,9 @@ class HMMTransducer(Transducer):
         # Concatenate the ht and hs
         # ctx_*: batch x seq_len x (trg_hid_siz+src_hid_size*2)
         ctx_curr = torch.cat(
-            (h_t.unsqueeze(1).expand(-1, src_seq_len, -1), enc_hs[0].transpose(
-                0, 1)),
-            dim=2)
+            (h_t.unsqueeze(1).expand(-1, src_seq_len, -1), enc_hs[0].transpose(0, 1)),
+            dim=2,
+        )
 
         hs_ = enc_hs[1].transpose(0, 1)
         h_t = h_t.unsqueeze(2)
@@ -342,9 +354,9 @@ class FullHMMTransducer(HMMTransducer):
         # Concatenate the ht and hs
         # ctx_trans: batch x seq_len x (trg_hid_siz*2)
         ctx_trans = torch.cat(
-            (h_t.unsqueeze(1).expand(-1, src_seq_len, -1), enc_hs[1].transpose(
-                0, 1)),
-            dim=2)
+            (h_t.unsqueeze(1).expand(-1, src_seq_len, -1), enc_hs[1].transpose(0, 1)),
+            dim=2,
+        )
         trans = F.softmax(self.trans(ctx_trans), dim=-1)
         trans_list = trans.split(1, dim=1)
         ws = (self.wid_siz - 1) // 2
@@ -360,9 +372,9 @@ class FullHMMTransducer(HMMTransducer):
         # Concatenate the ht and hs
         # ctx_emiss: batch x seq_len x (trg_hid_siz+src_hid_size*2)
         ctx_emiss = torch.cat(
-            (h_t.unsqueeze(1).expand(-1, src_seq_len, -1), enc_hs[0].transpose(
-                0, 1)),
-            dim=2)
+            (h_t.unsqueeze(1).expand(-1, src_seq_len, -1), enc_hs[0].transpose(0, 1)),
+            dim=2,
+        )
         ctx = torch.tanh(self.linear_out(ctx_emiss))
         # emiss: batch x seq_len x nb_vocab
         emiss = F.log_softmax(self.final_out(ctx), dim=-1)
@@ -372,8 +384,7 @@ class FullHMMTransducer(HMMTransducer):
 
 class MonoHMMTransducer(HMMTransducer):
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        trans, emiss, hidden = super().decode_step(enc_hs, enc_mask, input_,
-                                                   hidden)
+        trans, emiss, hidden = super().decode_step(enc_hs, enc_mask, input_, hidden)
         trans_mask = torch.ones_like(trans[0]).triu().unsqueeze(0)
         trans_mask = (trans_mask - 1) * -np.log(EPSILON)
         trans = trans + trans_mask
@@ -392,16 +403,23 @@ class HardMonoTransducer(Transducer):
             od=self.out_dim,
             vs=self.trg_vocab_size,
             hs=self.src_hid_size,
-            ht=self.trg_hid_size)
+            ht=self.trg_hid_size,
+        )
         if self.nb_attr > 0:
-            self.merge_attr = nn.Linear(self.embed_dim * self.nb_attr,
-                                        self.embed_dim)
+            self.merge_attr = nn.Linear(self.embed_dim * self.nb_attr, self.embed_dim)
             self.dec_rnn = StackedLSTM(
-                self.embed_dim * 2 + self.src_hid_size * 2, hs,
-                self.trg_nb_layers, self.dropout_p)
+                self.embed_dim * 2 + self.src_hid_size * 2,
+                hs,
+                self.trg_nb_layers,
+                self.dropout_p,
+            )
         else:
-            self.dec_rnn = StackedLSTM(self.embed_dim + self.src_hid_size * 2,
-                                       hs, self.trg_nb_layers, self.dropout_p)
+            self.dec_rnn = StackedLSTM(
+                self.embed_dim + self.src_hid_size * 2,
+                hs,
+                self.trg_nb_layers,
+                self.dropout_p,
+            )
         # nn.Linear(self.out_dim, trg_vocab_size)
         self.final_out = nn.Linear(hs, self.trg_vocab_size)
         del self.scale_enc_hs  # nn.Linear(src_hid_size * 2, trg_hid_size)
@@ -410,37 +428,41 @@ class HardMonoTransducer(Transducer):
 
     def cal_hs(self, *, layer, ed, od, vs, hs, ht):
         b = ed + 2 * hs + 2 + vs / 4
-        if self.nb_attr > 0: b += ed
-        c = ed * ed * self.nb_attr + ed - od * (od + vs + 1) - \
-            ht * (2 * hs + 4 * ht + 4 * ed + 1 + 4 * 2)
+        if self.nb_attr > 0:
+            b += ed
+        c = (
+            ed * ed * self.nb_attr
+            + ed
+            - od * (od + vs + 1)
+            - ht * (2 * hs + 4 * ht + 4 * ed + 1 + 4 * 2)
+        )
         c /= 4
         if layer > 1:
-            c -= (layer - 1) * (2 * ht**2 + 2 * ht)
+            c -= (layer - 1) * (2 * ht ** 2 + 2 * ht)
             b += (layer - 1) * 2
-            b /= (layer * 2 - 1)
-            c /= (layer * 2 - 1)
+            b /= layer * 2 - 1
+            c /= layer * 2 - 1
         return round((math.sqrt(b * b - 4 * c) - b) / 2)
 
     def encode(self, src_batch):
-        '''
+        """
         encoder
-        '''
+        """
         if self.nb_attr > 0:
             assert isinstance(src_batch, tuple) and len(src_batch) == 2
             src, attr = src_batch
             bs = src.shape[1]
             enc_hs, _ = self.enc_rnn(self.dropout(self.src_embed(src)))
-            enc_attr = F.relu(
-                self.merge_attr(self.src_embed(attr).view(bs, -1)))
+            enc_attr = F.relu(self.merge_attr(self.src_embed(attr).view(bs, -1)))
             return enc_hs, enc_attr
         else:
             enc_hs, _ = self.enc_rnn(self.dropout(self.src_embed(src_batch)))
             return enc_hs, None
 
     def decode_step(self, enc_hs, enc_mask, input_, hidden, attn_pos):
-        '''
+        """
         decode step
-        '''
+        """
         source, attr = enc_hs
         bs = source.shape[1]
         if isinstance(attn_pos, int):
@@ -457,14 +479,12 @@ class HardMonoTransducer(Transducer):
         return word_logprob, hidden, None
 
     def decode(self, enc_hs, enc_mask, trg_batch):
-        '''
+        """
         enc_hs: tuple(enc_hs, enc_attr)
-        '''
+        """
         trg_seq_len = trg_batch.size(0)
         trg_bat_siz = trg_batch.size(1)
-        attn_pos = torch.zeros((1, trg_bat_siz),
-                               dtype=torch.long,
-                               device=DEVICE)
+        attn_pos = torch.zeros((1, trg_bat_siz), dtype=torch.long, device=DEVICE)
         trg_embed = self.dropout(self.trg_embed(trg_batch))
         output = []
         hidden = self.dec_rnn.get_init_hx(trg_bat_siz)
@@ -474,25 +494,29 @@ class HardMonoTransducer(Transducer):
                     attn_pos[0, j] += 1
             input_ = trg_embed[idx, :]
             word_logprob, hidden, _ = self.decode_step(
-                enc_hs, enc_mask, input_, hidden, attn_pos)
+                enc_hs, enc_mask, input_, hidden, attn_pos
+            )
             output += [word_logprob]
         return torch.stack(output)
 
 
 class InputFeedTransducer(Transducer):
     def __init__(self, **kwargs):
-        '''
-        '''
+        """
+        """
         super().__init__(**kwargs)
-        print('previous size\n{}\n{}'.format(self.linear_out, self.final_out))
+        print("previous size\n{}\n{}".format(self.linear_out, self.final_out))
         self.scale_out = self.calculate_scale_out(
-            self.out_dim, self.trg_vocab_size, self.embed_dim)
+            self.out_dim, self.trg_vocab_size, self.embed_dim
+        )
         self.linear_out = nn.Linear(self.out_dim, self.scale_out)
         self.final_out = nn.Linear(self.scale_out, self.trg_vocab_size)
-        self.merge_input = nn.Linear(self.embed_dim + self.scale_out,
-                                     self.embed_dim)
-        print('new size\n{}\n{}\n{}'.format(self.linear_out, self.final_out,
-                                            self.merge_input))
+        self.merge_input = nn.Linear(self.embed_dim + self.scale_out, self.embed_dim)
+        print(
+            "new size\n{}\n{}\n{}".format(
+                self.linear_out, self.final_out, self.merge_input
+            )
+        )
 
     def calculate_scale_out(self, od, vt, e):
         num = od * od + od + od * vt - e * e - e
@@ -500,9 +524,9 @@ class InputFeedTransducer(Transducer):
         return round(num / den)
 
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        '''
+        """
         decode step
-        '''
+        """
         bs = input_.shape[0]
         if isinstance(hidden[0], tuple):
             prev_hidden, prev_context = hidden
@@ -525,26 +549,32 @@ class InputFeedTransducer(Transducer):
 
 class LargeInputFeedTransducer(InputFeedTransducer):
     def __init__(self, **kwargs):
-        '''
-        '''
+        """
+        """
         super().__init__(**kwargs)
         # print('previous size\n{}\n{}\n{}'.format(self.linear_out, self.final_out, self.merge_input))
         self.scale_out = self.out_dim
         self.linear_out = nn.Linear(self.out_dim, self.out_dim)
         self.final_out = nn.Linear(self.out_dim, self.trg_vocab_size)
         self.merge_input = Identity()
-        self.dec_rnn = StackedLSTM(self.embed_dim + self.out_dim,
-                                   self.trg_hid_size, self.trg_nb_layers,
-                                   self.dropout_p)
-        print('new size\n{}\n{}\n{}'.format(self.linear_out, self.final_out,
-                                            self.merge_input))
+        self.dec_rnn = StackedLSTM(
+            self.embed_dim + self.out_dim,
+            self.trg_hid_size,
+            self.trg_nb_layers,
+            self.dropout_p,
+        )
+        print(
+            "new size\n{}\n{}\n{}".format(
+                self.linear_out, self.final_out, self.merge_input
+            )
+        )
 
 
 class HardAttnTransducer(Transducer):
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        '''
+        """
         enc_hs: tuple(enc_hs, scale_enc_hs)
-        '''
+        """
         src_seq_len = enc_hs[0].size(0)
         h_t, hidden = self.dec_rnn(input_, hidden)
 
@@ -556,9 +586,9 @@ class HardAttnTransducer(Transducer):
         # Concatenate the ht and hs
         # ctx: batch x seq_len x (trg_hid_siz+src_hid_size*2)
         ctx = torch.cat(
-            (h_t.unsqueeze(1).expand(-1, src_seq_len, -1), enc_hs[0].transpose(
-                0, 1)),
-            dim=2)
+            (h_t.unsqueeze(1).expand(-1, src_seq_len, -1), enc_hs[0].transpose(0, 1)),
+            dim=2,
+        )
         # ctx: batch x seq_len x out_dim
         ctx = self.linear_out(ctx)
         ctx = torch.tanh(ctx)
@@ -577,30 +607,31 @@ class TagTransducer(Transducer):
         if self.nb_attr > 0:
             attr_dim = self.embed_dim // 5
             self.src_embed = nn.Embedding(
-                self.src_vocab_size - nb_attr,
-                self.embed_dim,
-                padding_idx=PAD_IDX)
+                self.src_vocab_size - nb_attr, self.embed_dim, padding_idx=PAD_IDX
+            )
             # padding_idx is a part of self.nb_attr, so need to +1
             self.attr_embed = nn.Embedding(
-                self.nb_attr + 1, attr_dim, padding_idx=PAD_IDX)
+                self.nb_attr + 1, attr_dim, padding_idx=PAD_IDX
+            )
             self.merge_attr = nn.Linear(attr_dim * self.nb_attr, attr_dim)
-            self.dec_rnn = StackedLSTM(self.embed_dim + attr_dim,
-                                       self.trg_hid_size, self.trg_nb_layers,
-                                       self.dropout_p)
+            self.dec_rnn = StackedLSTM(
+                self.embed_dim + attr_dim,
+                self.trg_hid_size,
+                self.trg_nb_layers,
+                self.dropout_p,
+            )
 
     def encode(self, src_batch):
-        '''
+        """
         encoder
-        '''
+        """
         if self.nb_attr > 0:
             assert isinstance(src_batch, tuple) and len(src_batch) == 2
             src, attr = src_batch
             bs = src.shape[1]
             new_idx = torch.arange(1, self.nb_attr + 1).expand(bs, -1)
-            attr = (
-                (attr > 1).float() * new_idx.to(attr.device).float()).long()
-            enc_attr = F.relu(
-                self.merge_attr(self.attr_embed(attr).view(bs, -1)))
+            attr = ((attr > 1).float() * new_idx.to(attr.device).float()).long()
+            enc_attr = F.relu(self.merge_attr(self.attr_embed(attr).view(bs, -1)))
         else:
             src = src_batch
             enc_attr = None
@@ -608,9 +639,9 @@ class TagTransducer(Transducer):
         return enc_hs, enc_attr
 
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        '''
+        """
         decode step
-        '''
+        """
         enc_hs_, attr = enc_hs
         if attr is not None:
             input_ = torch.cat((input_, attr), dim=1)
@@ -629,8 +660,7 @@ class MonoTagHMMTransducer(TagTransducer, MonoHMMTransducer):
     pass
 
 
-class MonoTagFullHMMTransducer(TagTransducer, MonoHMMTransducer,
-                               FullHMMTransducer):
+class MonoTagFullHMMTransducer(TagTransducer, MonoHMMTransducer, FullHMMTransducer):
     pass
 
 
@@ -659,12 +689,12 @@ class Categorical(Distribution):
 
 
 class ApproxiHardTransducer(Transducer):
-    '''
-    '''
+    """
+    """
 
     def __init__(self, *, nb_sample, **kwargs):
-        '''
-        '''
+        """
+        """
         super().__init__(**kwargs)
         self.nb_sample = nb_sample
         self.log_probs = []
@@ -673,8 +703,8 @@ class ApproxiHardTransducer(Transducer):
         self.gamma = 1
 
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        '''
-        '''
+        """
+        """
         src_seq_len = enc_hs[0].size(0)
         h_t, hidden = self.dec_rnn(input_, hidden)
 
@@ -688,8 +718,7 @@ class ApproxiHardTransducer(Transducer):
         self.log_probs.append(sampler.log_prob(index))
 
         ctx = fancy_gather(enc_hs[0], index)
-        ctx = torch.cat([h_t.unsqueeze(0).expand(self.nb_sample, -1, -1), ctx],
-                        dim=-1)
+        ctx = torch.cat([h_t.unsqueeze(0).expand(self.nb_sample, -1, -1), ctx], dim=-1)
         ctx = torch.tanh(self.linear_out(ctx))
         # word_prob: nb_sample x batch x nb_vocab
         word_prob = F.softmax(self.final_out(ctx), dim=-1)
@@ -706,29 +735,30 @@ class ApproxiHardTransducer(Transducer):
         return super().encode(src_batch)
 
     def loss(self, predict, target):
-        '''
+        """
         compute loss
-        '''
+        """
         nll_loss = F.nll_loss(
             predict.view(-1, self.trg_vocab_size),
             target.view(-1),
             ignore_index=PAD_IDX,
-            reduce=False)
+            reduce=False,
+        )
         policy_loss = []
         for log_prob, reward in zip(self.log_probs, nll_loss):
             policy_loss.append(-log_prob * (reward - self.aver_reward))
         policy_loss = torch.cat(policy_loss).mean()
         nll_loss = nll_loss.mean()
-        self.aver_reward = self.disc * self.aver_reward + \
-                           (1 - self.disc) * nll_loss.item()
+        self.aver_reward = (
+            self.disc * self.aver_reward + (1 - self.disc) * nll_loss.item()
+        )
         return policy_loss * self.gamma + nll_loss
 
 
-class ApproxiHardInputFeedTransducer(ApproxiHardTransducer,
-                                     InputFeedTransducer):
+class ApproxiHardInputFeedTransducer(ApproxiHardTransducer, InputFeedTransducer):
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        '''
-        '''
+        """
+        """
         src_seq_len = enc_hs[0].size(0)
         bs = input_.shape[0]
         if isinstance(hidden[0], tuple):
@@ -762,9 +792,9 @@ class ApproxiHardInputFeedTransducer(ApproxiHardTransducer,
 
 
 def dummy_mask(seq):
-    '''
+    """
     create dummy mask (all 1)
-    '''
+    """
     if isinstance(seq, tuple):
         seq = seq[0]
     assert len(seq.size()) == 1 or (len(seq.size()) == 2 and seq.size(1) == 1)

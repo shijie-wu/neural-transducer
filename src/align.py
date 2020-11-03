@@ -19,7 +19,7 @@
 import itertools
 from ctypes import *
 
-libalign = cdll.LoadLibrary('src/libalign.so')
+libalign = cdll.LoadLibrary("src/libalign.so")
 
 libalign_add_int_pair = libalign.add_int_pair
 libalign_clear_counts = libalign.clear_counts
@@ -41,13 +41,9 @@ libalign_align_init.restype = None
 
 
 class Aligner:
-    def __init__(self,
-                 wordpairs,
-                 align_symbol='~',
-                 iterations=10,
-                 burnin=5,
-                 lag=1,
-                 mode='crp'):
+    def __init__(
+        self, wordpairs, align_symbol="~", iterations=10, burnin=5, lag=1, mode="crp"
+    ):
         s = set()
         for x, y in wordpairs:
             s.update(x)
@@ -70,7 +66,7 @@ class Aligner:
             libalign_add_int_pair(icint, ocint)
 
         # Run CRP align
-        if mode == 'crp':
+        if mode == "crp":
             libalign_clear_counts()
             libalign_initial_align()
             libalign_crp_train(c_int(iterations), c_int(burnin), c_int(lag))

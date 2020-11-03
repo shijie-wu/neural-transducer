@@ -12,19 +12,21 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Decode(util.NamedEnum):
-    greedy = 'greedy'
-    sample = 'sample'
-    beam = 'beam'
+    greedy = "greedy"
+    sample = "sample"
+    beam = "beam"
 
 
 class Decoder(object):
-    def __init__(self,
-                 decoder_type,
-                 max_len=100,
-                 beam_size=5,
-                 trg_bos=BOS_IDX,
-                 trg_eos=EOS_IDX,
-                 skip_attn=True):
+    def __init__(
+        self,
+        decoder_type,
+        max_len=100,
+        beam_size=5,
+        trg_bos=BOS_IDX,
+        trg_eos=EOS_IDX,
+        skip_attn=True,
+    ):
         self.type = decoder_type
         self.max_len = max_len
         self.beam_size = beam_size
@@ -40,37 +42,44 @@ class Decoder(object):
         def tensor2str(tensor):
             return str(tensor.view(-1).cpu().numpy())
 
-        if isinstance(src_sentence, tuple) and all([isinstance(x, torch.Tensor) for x in src_sentence]):
+        if isinstance(src_sentence, tuple) and all(
+            [isinstance(x, torch.Tensor) for x in src_sentence]
+        ):
             return str([tensor2str(x) for x in src_sentence])
         elif isinstance(src_sentence, torch.Tensor):
             return tensor2str(src_sentence)
         else:
             raise ValueError(src_sentence)
 
-
     def __call__(self, transducer, src_sentence):
         key = self.src2str(src_sentence)
         if key in self.cache:
             return self.cache[key]
         if self.type == Decode.greedy:
-            output, attns = decode_greedy(transducer,
-                                          src_sentence,
-                                          max_len=self.max_len,
-                                          trg_bos=self.trg_bos,
-                                          trg_eos=self.trg_eos)
+            output, attns = decode_greedy(
+                transducer,
+                src_sentence,
+                max_len=self.max_len,
+                trg_bos=self.trg_bos,
+                trg_eos=self.trg_eos,
+            )
         elif self.type == Decode.beam:
-            output, attns = decode_beam_search(transducer,
-                                               src_sentence,
-                                               max_len=self.max_len,
-                                               nb_beam=self.beam_size,
-                                               trg_bos=self.trg_bos,
-                                               trg_eos=self.trg_eos)
+            output, attns = decode_beam_search(
+                transducer,
+                src_sentence,
+                max_len=self.max_len,
+                nb_beam=self.beam_size,
+                trg_bos=self.trg_bos,
+                trg_eos=self.trg_eos,
+            )
         elif self.type == Decode.sample:
-            output, attns = decode_sample(transducer,
-                                          src_sentence,
-                                          max_len=self.max_len,
-                                          trg_bos=self.trg_bos,
-                                          trg_eos=self.trg_eos)
+            output, attns = decode_sample(
+                transducer,
+                src_sentence,
+                max_len=self.max_len,
+                trg_bos=self.trg_bos,
+                trg_eos=self.trg_eos,
+            )
         else:
             raise ValueError
         return_values = (output, None if self.skip_attn else attns)
@@ -86,21 +95,17 @@ def get_decode_fn(decode, max_len=100, beam_size=5):
     return Decoder(decode, max_len=max_len, beam_size=beam_size)
 
 
-def decode_sample(transducer,
-                  src_sentence,
-                  max_len=100,
-                  trg_bos=BOS_IDX,
-                  trg_eos=EOS_IDX):
-    '''
+def decode_sample(
+    transducer, src_sentence, max_len=100, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+):
+    """
     src_sentence: [seq_len]
-    '''
+    """
     assert not isinstance(transducer, HardMonoTransducer)
     if isinstance(transducer, HMMTransducer):
-        return decode_sample_hmm(transducer,
-                                 src_sentence,
-                                 max_len=max_len,
-                                 trg_bos=BOS_IDX,
-                                 trg_eos=EOS_IDX)
+        return decode_sample_hmm(
+            transducer, src_sentence, max_len=max_len, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+        )
     transducer.eval()
     src_mask = dummy_mask(src_sentence)
     enc_hs = transducer.encode(src_sentence)
@@ -111,7 +116,8 @@ def decode_sample(transducer,
     input_ = transducer.dropout(transducer.trg_embed(input_))
     for _ in range(max_len):
         word_logprob, hidden, attn = transducer.decode_step(
-            enc_hs, src_mask, input_, hidden)
+            enc_hs, src_mask, input_, hidden
+        )
         word = Categorical(word_logprob.exp()).sample_n(1)[0]
         attns.append(attn)
         if word == trg_eos:
@@ -121,11 +127,9 @@ def decode_sample(transducer,
     return output, attns
 
 
-def decode_sample_hmm(transducer,
-                      src_sentence,
-                      max_len=100,
-                      trg_bos=BOS_IDX,
-                      trg_eos=EOS_IDX):
+def decode_sample_hmm(
+    transducer, src_sentence, max_len=100, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+):
     transducer.eval()
     src_mask = dummy_mask(src_sentence)
     enc_hs = transducer.encode(src_sentence)
@@ -136,8 +140,7 @@ def decode_sample_hmm(transducer,
     input_ = torch.tensor([trg_bos], device=DEVICE)
     input_ = transducer.dropout(transducer.trg_embed(input_))
     for idx in range(max_len):
-        trans, emiss, hidden = transducer.decode_step(enc_hs, src_mask, input_,
-                                                      hidden)
+        trans, emiss, hidden = transducer.decode_step(enc_hs, src_mask, input_, hidden)
         if idx == 0:
             initial = trans[:, 0].unsqueeze(1)
             attns.append(initial)
@@ -163,32 +166,24 @@ def decode_sample_hmm(transducer,
     return output, attns
 
 
-def decode_greedy(transducer,
-                  src_sentence,
-                  max_len=100,
-                  trg_bos=BOS_IDX,
-                  trg_eos=EOS_IDX):
-    '''
+def decode_greedy(
+    transducer, src_sentence, max_len=100, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+):
+    """
     src_sentence: [seq_len]
-    '''
+    """
     if isinstance(transducer, HardMonoTransducer):
-        return decode_greedy_mono(transducer,
-                                  src_sentence,
-                                  max_len=max_len,
-                                  trg_bos=BOS_IDX,
-                                  trg_eos=EOS_IDX)
+        return decode_greedy_mono(
+            transducer, src_sentence, max_len=max_len, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+        )
     if isinstance(transducer, HMMTransducer):
-        return decode_greedy_hmm(transducer,
-                                 src_sentence,
-                                 max_len=max_len,
-                                 trg_bos=BOS_IDX,
-                                 trg_eos=EOS_IDX)
+        return decode_greedy_hmm(
+            transducer, src_sentence, max_len=max_len, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+        )
     if isinstance(transducer, Transformer):
-        return decode_greedy_transformer(transducer,
-                                         src_sentence,
-                                         max_len=max_len,
-                                         trg_bos=BOS_IDX,
-                                         trg_eos=EOS_IDX)
+        return decode_greedy_transformer(
+            transducer, src_sentence, max_len=max_len, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+        )
     transducer.eval()
     src_mask = dummy_mask(src_sentence)
     enc_hs = transducer.encode(src_sentence)
@@ -199,7 +194,8 @@ def decode_greedy(transducer,
     input_ = transducer.dropout(transducer.trg_embed(input_))
     for _ in range(max_len):
         word_logprob, hidden, attn = transducer.decode_step(
-            enc_hs, src_mask, input_, hidden)
+            enc_hs, src_mask, input_, hidden
+        )
         word = torch.max(word_logprob, dim=1)[1]
         attns.append(attn)
         if word == trg_eos:
@@ -209,14 +205,12 @@ def decode_greedy(transducer,
     return output, attns
 
 
-def decode_greedy_mono(transducer,
-                       src_sentence,
-                       max_len=100,
-                       trg_bos=BOS_IDX,
-                       trg_eos=EOS_IDX):
-    '''
+def decode_greedy_mono(
+    transducer, src_sentence, max_len=100, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+):
+    """
     src_sentence: [seq_len]
-    '''
+    """
     assert isinstance(transducer, HardMonoTransducer)
     attn_pos = 0
     transducer.eval()
@@ -233,7 +227,8 @@ def decode_greedy_mono(transducer,
     input_ = transducer.dropout(transducer.trg_embed(input_))
     for _ in range(max_len):
         word_logprob, hidden, attn = transducer.decode_step(
-            enc_hs, src_mask, input_, hidden, attn_pos)
+            enc_hs, src_mask, input_, hidden, attn_pos
+        )
         word = torch.max(word_logprob, dim=1)[1]
         attns.append(attn)
         if word == STEP_IDX:
@@ -247,11 +242,9 @@ def decode_greedy_mono(transducer,
     return output, attns
 
 
-def decode_greedy_hmm(transducer,
-                      src_sentence,
-                      max_len=100,
-                      trg_bos=BOS_IDX,
-                      trg_eos=EOS_IDX):
+def decode_greedy_hmm(
+    transducer, src_sentence, max_len=100, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+):
     transducer.eval()
     src_mask = dummy_mask(src_sentence)
     enc_hs = transducer.encode(src_sentence)
@@ -262,8 +255,7 @@ def decode_greedy_hmm(transducer,
     input_ = torch.tensor([trg_bos], device=DEVICE)
     input_ = transducer.dropout(transducer.trg_embed(input_))
     for idx in range(max_len):
-        trans, emiss, hidden = transducer.decode_step(enc_hs, src_mask, input_,
-                                                      hidden)
+        trans, emiss, hidden = transducer.decode_step(enc_hs, src_mask, input_, hidden)
         if idx == 0:
             initial = trans[:, 0].unsqueeze(1)
             attns.append(initial)
@@ -288,14 +280,12 @@ def decode_greedy_hmm(transducer,
     return output, attns
 
 
-def decode_greedy_transformer(transducer,
-                              src_sentence,
-                              max_len=100,
-                              trg_bos=BOS_IDX,
-                              trg_eos=EOS_IDX):
-    '''
+def decode_greedy_transformer(
+    transducer, src_sentence, max_len=100, trg_bos=BOS_IDX, trg_eos=EOS_IDX
+):
+    """
     src_sentence: [seq_len]
-    '''
+    """
     assert isinstance(transducer, Transformer)
     transducer.eval()
     src_mask = dummy_mask(src_sentence)
@@ -305,13 +295,11 @@ def decode_greedy_transformer(transducer,
     output, attns = [trg_bos], []
 
     for _ in range(max_len):
-        output_tensor = torch.tensor(output,
-                                     device=DEVICE).view(len(output), 1)
+        output_tensor = torch.tensor(output, device=DEVICE).view(len(output), 1)
         trg_mask = dummy_mask(output_tensor)
         trg_mask = (trg_mask == 0).transpose(0, 1)
 
-        word_logprob = transducer.decode(enc_hs, src_mask, output_tensor,
-                                         trg_mask)
+        word_logprob = transducer.decode(enc_hs, src_mask, output_tensor, trg_mask)
         word_logprob = word_logprob[-1]
 
         word = torch.max(word_logprob, dim=1)[1]
@@ -321,51 +309,59 @@ def decode_greedy_transformer(transducer,
     return output[1:], attns
 
 
-Beam = namedtuple('Beam', 'seq_len log_prob hidden input partial_sent attn')
+Beam = namedtuple("Beam", "seq_len log_prob hidden input partial_sent attn")
 
 
-def decode_beam_search(transducer,
-                       src_sentence,
-                       max_len=50,
-                       nb_beam=5,
-                       norm=True,
-                       trg_bos=BOS_IDX,
-                       trg_eos=EOS_IDX):
-    '''
+def decode_beam_search(
+    transducer,
+    src_sentence,
+    max_len=50,
+    nb_beam=5,
+    norm=True,
+    trg_bos=BOS_IDX,
+    trg_eos=EOS_IDX,
+):
+    """
     src_sentence: [seq_len]
-    '''
+    """
 
     if isinstance(transducer, HardMonoTransducer):
-        return decode_beam_mono(transducer,
-                                src_sentence,
-                                max_len=max_len,
-                                nb_beam=nb_beam,
-                                norm=norm,
-                                trg_bos=BOS_IDX,
-                                trg_eos=EOS_IDX)
+        return decode_beam_mono(
+            transducer,
+            src_sentence,
+            max_len=max_len,
+            nb_beam=nb_beam,
+            norm=norm,
+            trg_bos=BOS_IDX,
+            trg_eos=EOS_IDX,
+        )
 
     if isinstance(transducer, HMMTransducer):
-        return decode_beam_hmm(transducer,
-                               src_sentence,
-                               max_len=max_len,
-                               nb_beam=nb_beam,
-                               norm=norm,
-                               trg_bos=BOS_IDX,
-                               trg_eos=EOS_IDX)
+        return decode_beam_hmm(
+            transducer,
+            src_sentence,
+            max_len=max_len,
+            nb_beam=nb_beam,
+            norm=norm,
+            trg_bos=BOS_IDX,
+            trg_eos=EOS_IDX,
+        )
 
     if isinstance(transducer, Transformer):
-        return decode_beam_transformer(transducer,
-                                       src_sentence,
-                                       max_len=max_len,
-                                       nb_beam=nb_beam,
-                                       norm=norm,
-                                       trg_bos=BOS_IDX,
-                                       trg_eos=EOS_IDX)
+        return decode_beam_transformer(
+            transducer,
+            src_sentence,
+            max_len=max_len,
+            nb_beam=nb_beam,
+            norm=norm,
+            trg_bos=BOS_IDX,
+            trg_eos=EOS_IDX,
+        )
 
     def score(beam):
-        '''
+        """
         compute score based on logprob
-        '''
+        """
         assert isinstance(beam, Beam)
         if norm:
             return -beam.log_prob / beam.seq_len
@@ -378,31 +374,41 @@ def decode_beam_search(transducer,
     hidden = transducer.dec_rnn.get_init_hx(1)
     input_ = torch.tensor([trg_bos], device=DEVICE)
     input_ = transducer.dropout(transducer.trg_embed(input_))
-    start = Beam(1, 0, hidden, input_, '', [])
+    start = Beam(1, 0, hidden, input_, "", [])
     beams = [start]
     finish_beams = []
     for _ in range(max_len):
         next_beams = []
         for beam in sorted(beams, key=score)[:nb_beam]:
             word_logprob, hidden, attn = transducer.decode_step(
-                enc_hs, src_mask, beam.input, beam.hidden)
+                enc_hs, src_mask, beam.input, beam.hidden
+            )
             topk_log_prob, topk_word = word_logprob.topk(nb_beam)
             topk_log_prob = topk_log_prob.view(nb_beam, 1)
             topk_word = topk_word.view(nb_beam, 1)
             for log_prob, word in zip(topk_log_prob, topk_word):
                 if word == trg_eos:
-                    new_beam = Beam(beam.seq_len + 1,
-                                    beam.log_prob + log_prob.item(), None, None,
-                                    beam.partial_sent, beam.attn + [attn])
+                    new_beam = Beam(
+                        beam.seq_len + 1,
+                        beam.log_prob + log_prob.item(),
+                        None,
+                        None,
+                        beam.partial_sent,
+                        beam.attn + [attn],
+                    )
                     finish_beams.append(new_beam)
                     # if len(finish_beams) == 10*K:
                     # max_output = sorted(finish_beams, key=score)[0]
                     # return list(map(int, max_output.partial_sent.split())), max_output.attn
                 else:
-                    new_beam = Beam(beam.seq_len + 1, beam.log_prob + log_prob.item(),
-                                    hidden, transducer.dropout(transducer.trg_embed(word)),
-                                    ' '.join([beam.partial_sent,
-                                              str(word.item())]), beam.attn + [attn])
+                    new_beam = Beam(
+                        beam.seq_len + 1,
+                        beam.log_prob + log_prob.item(),
+                        hidden,
+                        transducer.dropout(transducer.trg_embed(word)),
+                        " ".join([beam.partial_sent, str(word.item())]),
+                        beam.attn + [attn],
+                    )
                     next_beams.append(new_beam)
         beams = next_beams
     finish_beams = finish_beams if finish_beams else next_beams
@@ -410,22 +416,24 @@ def decode_beam_search(transducer,
     return list(map(int, max_output.partial_sent.split())), max_output.attn
 
 
-def decode_beam_transformer(transducer,
-                            src_sentence,
-                            max_len=50,
-                            nb_beam=5,
-                            norm=True,
-                            trg_bos=BOS_IDX,
-                            trg_eos=EOS_IDX):
-    '''
+def decode_beam_transformer(
+    transducer,
+    src_sentence,
+    max_len=50,
+    nb_beam=5,
+    norm=True,
+    trg_bos=BOS_IDX,
+    trg_eos=EOS_IDX,
+):
+    """
     src_sentence: [seq_len]
-    '''
+    """
     assert isinstance(transducer, Transformer)
 
     def score(beam):
-        '''
+        """
         compute score based on logprob
-        '''
+        """
         assert isinstance(beam, Beam)
         if norm:
             return -beam.log_prob / beam.seq_len
@@ -437,7 +445,7 @@ def decode_beam_transformer(transducer,
     enc_hs = transducer.encode(src_sentence, src_mask)
 
     input_ = torch.tensor([trg_bos], device=DEVICE).view(1, 1)
-    start = Beam(1, 0, None, input_, '', None)
+    start = Beam(1, 0, None, input_, "", None)
     beams = [start]
     finish_beams = []
     for _ in range(max_len):
@@ -454,15 +462,24 @@ def decode_beam_transformer(transducer,
             topk_word = topk_word.view(nb_beam, 1)
             for log_prob, word in zip(topk_log_prob, topk_word):
                 if word == trg_eos:
-                    new_beam = Beam(beam.seq_len + 1,
-                                    beam.log_prob + log_prob.item(), None, None,
-                                    beam.partial_sent, None)
+                    new_beam = Beam(
+                        beam.seq_len + 1,
+                        beam.log_prob + log_prob.item(),
+                        None,
+                        None,
+                        beam.partial_sent,
+                        None,
+                    )
                     finish_beams.append(new_beam)
                 else:
-                    new_beam = Beam(beam.seq_len + 1, beam.log_prob + log_prob.item(),
-                                    None, torch.cat((beam.input, word.view(1, 1))),
-                                    ' '.join([beam.partial_sent,
-                                              str(word.item())]), None)
+                    new_beam = Beam(
+                        beam.seq_len + 1,
+                        beam.log_prob + log_prob.item(),
+                        None,
+                        torch.cat((beam.input, word.view(1, 1))),
+                        " ".join([beam.partial_sent, str(word.item())]),
+                        None,
+                    )
                     next_beams.append(new_beam)
         beams = next_beams
     finish_beams = finish_beams if finish_beams else next_beams
@@ -471,22 +488,25 @@ def decode_beam_transformer(transducer,
 
 
 BeamHard = namedtuple(
-    'BeamHard', 'seq_len log_prob hidden input partial_sent attn attn_pos')
+    "BeamHard", "seq_len log_prob hidden input partial_sent attn attn_pos"
+)
 
 
-def decode_beam_mono(transducer,
-                     src_sentence,
-                     max_len=50,
-                     nb_beam=5,
-                     norm=True,
-                     trg_bos=BOS_IDX,
-                     trg_eos=EOS_IDX):
+def decode_beam_mono(
+    transducer,
+    src_sentence,
+    max_len=50,
+    nb_beam=5,
+    norm=True,
+    trg_bos=BOS_IDX,
+    trg_eos=EOS_IDX,
+):
     assert isinstance(transducer, HardMonoTransducer)
 
     def score(beam):
-        '''
+        """
         compute score based on logprob
-        '''
+        """
         assert isinstance(beam, BeamHard)
         if norm:
             return -beam.log_prob / beam.seq_len
@@ -503,31 +523,41 @@ def decode_beam_mono(transducer,
     hidden = transducer.dec_rnn.get_init_hx(1)
     input_ = torch.tensor([trg_bos], device=DEVICE)
     input_ = transducer.dropout(transducer.trg_embed(input_))
-    start = BeamHard(1, 0, hidden, input_, '', [], 0)
+    start = BeamHard(1, 0, hidden, input_, "", [], 0)
     beams = [start]
     finish_beams = []
     for _ in range(max_len):
         next_beams = []
         for beam in sorted(beams, key=score)[:nb_beam]:
             word_logprob, hidden, attn = transducer.decode_step(
-                enc_hs, src_mask, beam.input, beam.hidden, beam.attn_pos)
+                enc_hs, src_mask, beam.input, beam.hidden, beam.attn_pos
+            )
             topk_log_prob, topk_word = word_logprob.topk(nb_beam)
             topk_log_prob = topk_log_prob.view(nb_beam, 1)
             topk_word = topk_word.view(nb_beam, 1)
             for log_prob, word in zip(topk_log_prob, topk_word):
                 if word == trg_eos:
-                    new_beam = BeamHard(beam.seq_len + 1,
-                                        beam.log_prob + log_prob.item(), None,
-                                        None, beam.partial_sent,
-                                        beam.attn + [attn], beam.attn_pos)
+                    new_beam = BeamHard(
+                        beam.seq_len + 1,
+                        beam.log_prob + log_prob.item(),
+                        None,
+                        None,
+                        beam.partial_sent,
+                        beam.attn + [attn],
+                        beam.attn_pos,
+                    )
                     finish_beams.append(new_beam)
                 else:
                     shift = 1 if word == STEP_IDX and beam.attn_pos + 1 < seq_len else 0
-                    new_beam = BeamHard(beam.seq_len + 1, beam.log_prob + log_prob.item(),
-                                        hidden, transducer.dropout(transducer.trg_embed(word)),
-                                        ' '.join([beam.partial_sent,
-                                                  str(word.item())]), beam.attn + [attn],
-                                        beam.attn_pos + shift)
+                    new_beam = BeamHard(
+                        beam.seq_len + 1,
+                        beam.log_prob + log_prob.item(),
+                        hidden,
+                        transducer.dropout(transducer.trg_embed(word)),
+                        " ".join([beam.partial_sent, str(word.item())]),
+                        beam.attn + [attn],
+                        beam.attn_pos + shift,
+                    )
                     next_beams.append(new_beam)
         beams = next_beams
     finish_beams = finish_beams if finish_beams else next_beams
@@ -536,21 +566,24 @@ def decode_beam_mono(transducer,
 
 
 BeamHMM = namedtuple(
-    'BeamHMM', 'seq_len log_prob hidden input partial_sent attn forward')
+    "BeamHMM", "seq_len log_prob hidden input partial_sent attn forward"
+)
 
 
-def decode_beam_hmm(transducer,
-                    src_sentence,
-                    max_len=50,
-                    nb_beam=5,
-                    norm=True,
-                    trg_bos=BOS_IDX,
-                    trg_eos=EOS_IDX,
-                    return_top_beams=False):
+def decode_beam_hmm(
+    transducer,
+    src_sentence,
+    max_len=50,
+    nb_beam=5,
+    norm=True,
+    trg_bos=BOS_IDX,
+    trg_eos=EOS_IDX,
+    return_top_beams=False,
+):
     def score(beam):
-        '''
+        """
         compute score based on logprob
-        '''
+        """
         assert isinstance(beam, BeamHMM)
         if norm:
             return -beam.log_prob / beam.seq_len
@@ -565,9 +598,8 @@ def decode_beam_hmm(transducer,
     input_ = torch.tensor([trg_bos], device=DEVICE)
     input_ = transducer.dropout(transducer.trg_embed(input_))
 
-    seq_len, log_prob, partial_sent, attn, forward = 1, 0, '', [], None
-    beam = BeamHMM(seq_len, log_prob, hidden, input_, partial_sent, attn,
-                   forward)
+    seq_len, log_prob, partial_sent, attn, forward = 1, 0, "", [], None
+    beam = BeamHMM(seq_len, log_prob, hidden, input_, partial_sent, attn, forward)
     beams = [beam]
     finish_beams = []
 
@@ -575,7 +607,8 @@ def decode_beam_hmm(transducer,
         next_beams = []
         for beam in sorted(beams, key=score)[:nb_beam]:
             trans, emiss, hidden = transducer.decode_step(
-                enc_hs, src_mask, beam.input, beam.hidden)
+                enc_hs, src_mask, beam.input, beam.hidden
+            )
 
             if beam.seq_len == 1:
                 assert beam.forward is None
@@ -587,8 +620,7 @@ def decode_beam_hmm(transducer,
                 attn = trans
                 # forward = torch.bmm(forward, trans)
                 forward = beam.forward + trans.transpose(1, 2)
-                forward = forward.logsumexp(dim=-1,
-                                            keepdim=True).transpose(1, 2)
+                forward = forward.logsumexp(dim=-1, keepdim=True).transpose(1, 2)
 
             seq_len = beam.seq_len + 1
             next_attn = beam.attn + [attn]
@@ -608,13 +640,21 @@ def decode_beam_hmm(transducer,
 
                 if word == trg_eos:
                     sent = beam.partial_sent
-                    new_beam = BeamHMM(seq_len, log_prob, None, None, sent,
-                                       next_attn, next_forward)
+                    new_beam = BeamHMM(
+                        seq_len, log_prob, None, None, sent, next_attn, next_forward
+                    )
                     finish_beams.append(new_beam)
                 else:
-                    sent = f'{beam.partial_sent} {next_output}'
-                    new_beam = BeamHMM(seq_len, log_prob, hidden, next_input, sent,
-                                       next_attn, next_forward)
+                    sent = f"{beam.partial_sent} {next_output}"
+                    new_beam = BeamHMM(
+                        seq_len,
+                        log_prob,
+                        hidden,
+                        next_input,
+                        sent,
+                        next_attn,
+                        next_forward,
+                    )
                     next_beams.append(new_beam)
         beams = next_beams
     finish_beams = finish_beams if finish_beams else next_beams
