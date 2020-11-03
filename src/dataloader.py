@@ -1,8 +1,5 @@
-import heapq
-import sys
 import xml.etree.ElementTree
-from typing import List, Optional, Dict
-from collections import defaultdict
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -10,8 +7,8 @@ from tqdm import tqdm
 
 from align import Aligner
 
-BOS = "<s>"
-EOS = "<\s>"
+BOS = "<BOS>"
+EOS = "<EOS>"
 PAD = "<PAD>"
 UNK = "<UNK>"
 ALIGN = "<a>"
@@ -144,14 +141,14 @@ class Seq2SeqDataLoader(Dataloader):
             sent = [BOS] + sent
         if sent[-1] != EOS:
             sent = sent + [EOS]
-        l = len(sent)
+        seq_len = len(sent)
         s = []
         for x in sent:
             if x in self.source_c2i:
                 s.append(self.source_c2i[x])
             else:
                 s.append(self.attr_c2i[x])
-        return torch.tensor(s, device=self.device).view(l, 1)
+        return torch.tensor(s, device=self.device).view(seq_len, 1)
 
     def decode_source(self, sent):
         if isinstance(sent, torch.Tensor):
@@ -575,7 +572,7 @@ class StandardG2P(Seq2SeqDataLoader):
                 for line in fp.readlines():
                     grapheme, phoneme = line.strip().split("\t")
                     yield grapheme.split(" "), phoneme.split(" ")
-        except:
+        except UnicodeDecodeError:
             with open(file, "r", encoding="utf-8", errors="replace") as fp:
                 for line in fp.readlines():
                     grapheme, phoneme = line.strip().split("\t")

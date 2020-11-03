@@ -1,16 +1,15 @@
 """
 Borrowed from https://github.com/antonisa/inflection
 """
-import sys
-
-sys.path.append("src")
-
-import align
 import argparse
 import codecs
 import os
-from random import random, choice
-import re
+import sys
+from random import choice, random
+from typing import Any, List
+
+sys.path.append("src")
+import align  # noqa: E402
 
 
 def read_data(filename):
@@ -19,12 +18,12 @@ def read_data(filename):
     inputs = []
     outputs = []
     tags = []
-    for l in lines:
-        l = l.strip().split("\t")
-        if l:
-            inputs.append(list(l[0].strip()))
-            outputs.append(list(l[1].strip()))
-            tags.append(l[2].strip().split(";"))
+    for line in lines:
+        line = line.strip().split("\t")
+        if line:
+            inputs.append(list(line[0].strip()))
+            outputs.append(list(line[1].strip()))
+            tags.append(line[2].strip().split(";"))
     return inputs, outputs, tags
 
 
@@ -62,7 +61,7 @@ def augment(inputs, outputs, tags, characters):
     vocab = list(characters)
     try:
         vocab.remove(u" ")
-    except:
+    except ValueError:
         pass
 
     new_inputs = []
@@ -88,13 +87,13 @@ def augment(inputs, outputs, tags, characters):
                         new_o[j] = nc
             new_i1 = [
                 c
-                for l, c in enumerate(new_i)
-                if (c.strip() or (new_o[l] == " " and new_i[l] == " "))
+                for idx, c in enumerate(new_i)
+                if (c.strip() or (new_o[idx] == " " and new_i[idx] == " "))
             ]
             new_o1 = [
                 c
-                for l, c in enumerate(new_o)
-                if (c.strip() or (new_i[l] == " " and new_o[l] == " "))
+                for idx, c in enumerate(new_o)
+                if (c.strip() or (new_i[idx] == " " and new_o[idx] == " "))
             ]
             new_inputs.append(new_i1)
             new_outputs.append(new_o1)
@@ -107,8 +106,8 @@ def augment(inputs, outputs, tags, characters):
     return new_inputs, new_outputs, new_tags
 
 
-def get_chars(l):
-    flat_list = [char for word in l for char in word]
+def get_chars(words):
+    flat_list = [char for word in words for char in word]
     return list(set(flat_list))
 
 
@@ -144,7 +143,9 @@ if usedev:
 else:
     vocab = get_chars(lowi + lowo)
 
-i, o, t = [], [], []
+i: List[Any] = []
+o: List[Any] = []
+t: List[Any] = []
 while len(i) < N:
     if usedev:
         # Do augmentation also using examples from dev

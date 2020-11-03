@@ -11,20 +11,11 @@ This repo contains a set of neural transducer, e.g. sequence-to-sequence model, 
 - Shijie Wu, Pamela Shapiro, and Ryan Cotterell. [*Hard Non-Monotonic Attention for Character-Level Transduction*](https://arxiv.org/abs/1808.10024). EMNLP. 2018. ([Experiments Detail](example/hard-attention))
 
 
-## Dependencies
+## Miscellaneous
 
-- python 3
-- pytorch==1.4
-- numpy
-- tqdm
-- fire
-
-
-## Install
-
-```bash
-make
-```
+- Environment (conda): `environment.yml`
+- Pre-commit check: `pre-commit run --all-files`
+- Compile: `make`
 
 
 ## License

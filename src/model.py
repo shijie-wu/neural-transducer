@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Distribution
 
-from dataloader import BOS_IDX, EOS_IDX, PAD_IDX, STEP_IDX
+from dataloader import PAD_IDX, STEP_IDX
 
 EPSILON = 1e-7
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -705,7 +705,6 @@ class ApproxiHardTransducer(Transducer):
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
         """
         """
-        src_seq_len = enc_hs[0].size(0)
         h_t, hidden = self.dec_rnn(input_, hidden)
 
         # ht: batch x trg_hid_dim
@@ -759,7 +758,6 @@ class ApproxiHardInputFeedTransducer(ApproxiHardTransducer, InputFeedTransducer)
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
         """
         """
-        src_seq_len = enc_hs[0].size(0)
         bs = input_.shape[0]
         if isinstance(hidden[0], tuple):
             prev_hidden, prev_context = hidden

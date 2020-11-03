@@ -73,7 +73,7 @@ struct stringpair {          /* These are all               */
 
 void align_init(void) {
 	g_stringpairs = NULL;
-	g_stringpairs_tail = NULL;	
+	g_stringpairs_tail = NULL;
 }
 
 int intseqlen(int *seq) {
@@ -193,7 +193,7 @@ double fill_trellis(int *in, int *out, double(*cost)(int, int), int mode) {
 			left = g_trellis[x-1][y] + cost(0,out[x-1]);
 			down = g_trellis[x][y-1] + cost(in[y-1], 0);
 			diag = g_trellis[x-1][y-1] + cost(in[y-1], out[x-1]);
-	    
+
 			if (mode == MATRIX_MODE_MED) {
 				g_trellis[x][y] = MIN3(left, diag, down);
 				g_backptr[x][y] = CMP3(left, diag, down);
@@ -208,10 +208,10 @@ double fill_trellis(int *in, int *out, double(*cost)(int, int), int mode) {
        in the matrix and moving left, down, or diagonally down/left until we reach [0,0]
        ..[B][A]   To choose the direction we do a weighted coin toss between choices A -> B, A -> C, A -> D:
        ..[C][D]   w(B) = p(B) * p(B->A) ; w(C) = p(C) * p(C->A) ; w(D) = p(D) * p(D -> A).
-          .  .    and p(X->Y) = the probability of taking the transition (X->Y)               
+          .  .    and p(X->Y) = the probability of taking the transition (X->Y)
           .  .    Since we've stored the probabilities in log space, we need to do some scaling
-                  and conversion before doing the weighted toss.		   
-    */                                          
+                  and conversion before doing the weighted toss.
+    */
 
     if (mode == MATRIX_MODE_GS) {
 		for (y = inlen, x = outlen; x > 0 || y > 0 ; ) {
@@ -232,7 +232,7 @@ double fill_trellis(int *in, int *out, double(*cost)(int, int), int mode) {
 
     for (i = 0, y = inlen, x = outlen; x > 0 || y > 0; i++) {
 		if (g_backptr[x][y] == DIAG) {
-			x--; 
+			x--;
 			y--;
 			g_in_result[i] = in[y];
 			g_out_result[i] = out[x];
@@ -297,7 +297,7 @@ void print_counts() {
 	for (i = 0; i <= g_maxsymbol; i++) {
 		for (j = 0; j <= g_maxsymbol; j++) {
 			debug("%i ", g_current_count[i][j]);
-		}		
+		}
 		debug("\n");
 	}
 }
@@ -449,12 +449,12 @@ void add_string_pair(char *in, char *out) {
 			int_out[j] = get_set_char_num(token);
 			token = strtok(NULL, " ");
 		}
-		int_out[j] = -1;	
+		int_out[j] = -1;
 	}
 
 	newpair = malloc(sizeof(struct stringpair));
 	newpair->in = int_in;
-	newpair->out = int_out;    
+	newpair->out = int_out;
 	newpair->next = NULL;
 	if (g_stringpairs == NULL) {
 		g_stringpairs = newpair;
@@ -462,7 +462,7 @@ void add_string_pair(char *in, char *out) {
 	} else {
 		g_stringpairs_tail->next = newpair;
 		g_stringpairs_tail = newpair;
-	}    
+	}
 }
 
 /* Directly add two -1 terminated integer sequences */
@@ -486,7 +486,7 @@ void add_int_pair(int *in, int *out) {
     }
 }
 
-void clear_counts() {	
+void clear_counts() {
 	int i,j;
 	for (i = 0; i <= g_maxsymbol; i++) {
 		for (j = 0; j <= g_maxsymbol; j++) {
@@ -544,7 +544,7 @@ void print_pair_aligned(int *in, int *out) {
 		fieldwidth = utf8strlen(instr) > utf8strlen(outstr) ? utf8strlen(instr) : utf8strlen(outstr);
 		printf("%-*s", fieldwidth, instr);
 		if (in[i+1] != -1 && out[i+1] != -1)
-			printf("|");      
+			printf("|");
 	}
 	printf("\n");
 	for (i = 0; in[i] != -1 && out[i] != -1; i++) {
@@ -553,7 +553,7 @@ void print_pair_aligned(int *in, int *out) {
 		fieldwidth = utf8strlen(instr) > utf8strlen(outstr) ? utf8strlen(instr) : utf8strlen(outstr);
 		printf("%-*s", fieldwidth, outstr);
 		if (in[i+1] != -1 && out[i+1] != -1)
-			printf("|");      
+			printf("|");
 	}
 	printf("\n\n");
 }
@@ -561,7 +561,7 @@ void print_pair_aligned(int *in, int *out) {
 /* Functions for Python ctypes wrap */
 
 struct stringpair *getpairs_init() {
-	return g_stringpairs;	
+	return g_stringpairs;
 }
 
 int *getpairs_in(struct stringpair *sp) {
@@ -573,7 +573,7 @@ int *getpairs_out(struct stringpair *sp) {
 }
 
 struct stringpair *getpairs_advance(struct stringpair *sp) {
-	return sp->next;	
+	return sp->next;
 }
 
 /************************************/
@@ -611,7 +611,7 @@ void read_stringpairs() {
 			token1 = strtok(my_string, "\t\n");
 			token2 = strtok(NULL, "\t\n");
 			if (token1 != NULL && token2 != NULL)
-				add_string_pair(token1, token2);	    
+				add_string_pair(token1, token2);
 		}
 	}
 	clear_counts();
@@ -619,7 +619,7 @@ void read_stringpairs() {
 }
 
 int main(int argc, char **argv) {
-	static char *usagestring = 
+	static char *usagestring =
 	"Chinese restaurant process string pair aligner\n"
 	"Basic usage: crpalign11 [options] < infile.txt > aligned.txt\n"
 	"             infile.txt is a list of TAB-separated word-pairs, one pair per line.\n\n"
@@ -649,7 +649,7 @@ int main(int argc, char **argv) {
 		{"prior",       required_argument, 0, 'p'},
 		{0, 0, 0, 0}
 	};
-    
+
 	while ((opt = getopt_long(argc, argv, "dmx:b:l:p:i:o:h", long_options, &option_index)) != -1) {
 		switch(opt) {
 			case 'd':
@@ -699,8 +699,8 @@ int main(int argc, char **argv) {
 			break;
 		}
 	}
-    
-	srand48((unsigned int)time((time_t *)NULL));   
+
+	srand48((unsigned int)time((time_t *)NULL));
 	read_stringpairs();
 	if (g_med == 1) {
 		med_align();

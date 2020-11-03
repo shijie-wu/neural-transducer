@@ -81,7 +81,9 @@ def main():
     model = model.to(device)
 
     trg_i2c = {i: c for c, i in model.trg_c2i.items()}
-    decode_trg = lambda seq: [trg_i2c[i] for i in seq]
+
+    def decode_trg(seq):
+        return [trg_i2c[i] for i in seq]
 
     maybe_mkdir(opt.out_file)
     with open(opt.out_file, "w", encoding="utf-8") as fp:

@@ -1,14 +1,11 @@
-import copy
 import math
-from collections import namedtuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Distribution
 
-from dataloader import BOS_IDX, EOS_IDX, PAD_IDX, STEP_IDX
+from dataloader import PAD_IDX
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

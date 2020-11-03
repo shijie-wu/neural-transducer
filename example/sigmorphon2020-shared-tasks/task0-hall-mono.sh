@@ -6,7 +6,6 @@ ckpt_dir=checkpoints/sigmorphon20-task0
 arch=hmm
 lang=$1
 
-
 CUDA_VISIBLE_DEVICES=$gpu python src/train.py \
     --dataset sigmorphon17task1 \
     --train $data_dir/$lang.hall.trn \

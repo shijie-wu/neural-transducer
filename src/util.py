@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import random
 import string
@@ -24,17 +23,6 @@ tqdm = partial(tqdm, bar_format="{l_bar}{r_bar}")
 class NamedEnum(Enum):
     def __str__(self):
         return self.value
-
-
-def log_grad_norm(self, grad_input, grad_output, logger=None):
-    try:
-        logger.debug("")
-        logger.debug("Inside %r backward", self.__class__.__name__)
-        logger.debug("grad_input size: %r", grad_input[0].size())
-        logger.debug("grad_output size: %r", grad_output[0].size())
-        logger.debug("grad_input norm: %r", grad_input[0].detach().norm())
-    except:
-        pass
 
 
 def grad_norm(parameters, norm_type=2):
@@ -265,7 +253,7 @@ class TranslitEvaluator(BasicEvaluator):
             r = lcs / len(closest_ref)
             try:
                 p = lcs / len(pred)
-            except:
+            except ZeroDivisionError:
                 p = 0
             f = 2 * r * p / (r + p)
             return best_corr, f

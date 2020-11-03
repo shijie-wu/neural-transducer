@@ -104,7 +104,6 @@ class Preprocesser(object):
         raise NotImplementedError
 
     def find_substr(self, unimorph_ed, past_ed):
-        cnt = 0
         opt = self.opt
         # Step 1. Remove dervation from unimorph
         clean_lemma = list()

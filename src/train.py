@@ -1,7 +1,6 @@
 """
 train
 """
-import math
 import os
 from functools import partial
 
@@ -270,7 +269,7 @@ class Trainer(BaseTrainer):
         sampler, nb_instance = self.iterate_instance(mode)
         decode_fn.reset()
         with open(f"{write_fp}.{mode}.tsv", "w") as fp:
-            fp.write(f"prediction\ttarget\tloss\tdist\n")
+            fp.write("prediction\ttarget\tloss\tdist\n")
             for src, trg in tqdm(sampler(), total=nb_instance):
                 pred, _ = decode_fn(self.model, src)
                 dist = util.edit_distance(pred, trg.view(-1).tolist()[1:-1])
@@ -291,8 +290,8 @@ class Trainer(BaseTrainer):
         best_res = [m for m in self.models if m.evaluation_result][0]
         best_acc = [m for m in self.models if m.evaluation_result][0]
         best_devloss = self.models[0]
-        for model in self.models:
-            if not model.evaluation_result:
+        for m in self.models:
+            if not m.evaluation_result:
                 continue
             if (
                 type(self.evaluator) == util.BasicEvaluator
@@ -302,24 +301,22 @@ class Trainer(BaseTrainer):
             ):
                 # [acc, edit distance / per ]
                 if (
-                    model.evaluation_result[0].res >= best_res.evaluation_result[0].res
-                    and model.evaluation_result[1].res
-                    <= best_res.evaluation_result[1].res
+                    m.evaluation_result[0].res >= best_res.evaluation_result[0].res
+                    and m.evaluation_result[1].res <= best_res.evaluation_result[1].res
                 ):
-                    best_res = model
+                    best_res = m
             elif type(self.evaluator) == util.TranslitEvaluator:
                 if (
-                    model.evaluation_result[0].res >= best_res.evaluation_result[0].res
-                    and model.evaluation_result[1].res
-                    >= best_res.evaluation_result[1].res
+                    m.evaluation_result[0].res >= best_res.evaluation_result[0].res
+                    and m.evaluation_result[1].res >= best_res.evaluation_result[1].res
                 ):
-                    best_res = model
+                    best_res = m
             else:
                 raise NotImplementedError
-            if model.evaluation_result[0].res >= best_acc.evaluation_result[0].res:
-                best_acc = model
-            if model.devloss <= best_devloss.devloss:
-                best_devloss = model
+            if m.evaluation_result[0].res >= best_acc.evaluation_result[0].res:
+                best_acc = m
+            if m.devloss <= best_devloss.devloss:
+                best_devloss = m
         if self.params.bestacc:
             best_fp = best_acc.filepath
         else:

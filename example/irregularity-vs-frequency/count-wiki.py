@@ -1,16 +1,13 @@
 import argparse
 import json
 import os
-import re
-import string
 from collections import Counter
 from functools import partial
 
-from tqdm import tqdm
-
 import langcodes
-from nltk.tokenize import word_tokenize, wordpunct_tokenize
+from nltk.tokenize import word_tokenize
 from smart_open import smart_open
+from tqdm import tqdm
 
 
 def get_args():
@@ -68,7 +65,7 @@ def main():
         text = " ".join(article["section_texts"]).lower()
         try:
             tokens = tokenize(text)
-        except:
+        except LookupError:
             print("Using default tokenizer")
             tokenize = partial(word_tokenize, language="english")
             tokens = tokenize(text)

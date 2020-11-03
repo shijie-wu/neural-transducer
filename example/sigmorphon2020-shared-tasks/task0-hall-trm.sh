@@ -22,7 +22,6 @@ embed_dim=256
 nb_heads=4
 dropout=${2:-0.3}
 
-
 CUDA_VISIBLE_DEVICES=$gpu python src/train.py \
     --dataset sigmorphon17task1 \
     --train $data_dir/$lang.hall.trn \

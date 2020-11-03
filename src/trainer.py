@@ -218,7 +218,7 @@ class BaseTrainer(object):
             return self.optimizer.param_groups[0]["lr"]
         try:
             return self.scheduler.get_last_lr()[0]
-        except:
+        except AttributeError:
             return self.scheduler.get_lr()[0]
 
     def train(self, epoch_idx, batch_size, max_norm):

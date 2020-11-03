@@ -17,7 +17,7 @@
 # MH20151102
 
 import itertools
-from ctypes import *
+from ctypes import POINTER, c_int, c_void_p, cdll
 
 libalign = cdll.LoadLibrary("src/libalign.so")
 
@@ -52,7 +52,7 @@ class Aligner:
         self.inttosymbol = {v: k for k, v in list(self.symboltoint.items())}
         assert len(self.symboltoint) < 4096
         self.inttosymbol[0] = align_symbol
-        ## Map stringpairs to -1 terminated integer sequences ##
+        # Map stringpairs to -1 terminated integer sequences
         intpairs = []
         for i, o in wordpairs:
             intin = [self.symboltoint[x] for x in i] + [-1]
@@ -79,7 +79,7 @@ class Aligner:
         # Reconvert to output
         self.alignedpairs = []
         stringpairptr = libalign_getpairs_init()
-        while stringpairptr != None:
+        while stringpairptr is not None:
             inints = libalign_getpairs_in(c_void_p(stringpairptr))
             outints = libalign_getpairs_out(c_void_p(stringpairptr))
             instr = []
