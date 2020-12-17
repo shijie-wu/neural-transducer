@@ -41,22 +41,22 @@ def read_file(file):
 
 def regular(family):
     for lang in sorted(LANGS[family]):
-        for mode in ["trn", "dev"]:
+        for mode in ["trn", "dev", "tst"]:
             with open(f"{OUT_DIR}/{lang}.{mode}", "w") as fp:
-                for toks in read_file(f"{IN_DIR}/{family}/{lang}.{mode}"):
+                for toks in read_file(f"{IN_DIR}/{lang}.{mode}"):
                     print(*toks, sep="\t", file=fp)
 
 
 def halluication(family):
     for lang in sorted(LANGS[family]):
         mode = "trn"
-        if not os.path.isfile(f"{IN_DIR}/{family}/{lang}.hall"):
+        if not os.path.isfile(f"{IN_DIR}/{lang}.hall"):
             print("missing .hall for", lang)
             continue
         with open(f"{OUT_DIR}/{lang}.hall.{mode}", "w") as fp:
-            for toks in read_file(f"{IN_DIR}/{family}/{lang}.{mode}"):
+            for toks in read_file(f"{IN_DIR}/{lang}.{mode}"):
                 print(*toks, sep="\t", file=fp)
-            for i, toks in enumerate(read_file(f"{IN_DIR}/{family}/{lang}.hall")):
+            for i, toks in enumerate(read_file(f"{IN_DIR}/{lang}.hall")):
                 if i == MAX_HALL:
                     break
                 print(toks[0], toks[1], f"fake;{toks[2]}", sep="\t", file=fp)
@@ -66,21 +66,21 @@ def concat_langid(family):
     for mode in ["trn", "dev"]:
         with open(f"{OUT_DIR}/{family}.{mode}", "w") as fp:
             for lang in sorted(LANGS[family]):
-                for toks in read_file(f"{IN_DIR}/{family}/{lang}.{mode}"):
+                for toks in read_file(f"{IN_DIR}/{lang}.{mode}"):
                     print(toks[0], toks[1], f"{lang};{toks[2]}", sep="\t", file=fp)
 
 
 def concat_halluication(family):
     mode = "trn"
     for lang in sorted(LANGS[family]):
-        if not os.path.isfile(f"{IN_DIR}/{family}/{lang}.hall"):
+        if not os.path.isfile(f"{IN_DIR}/{lang}.hall"):
             print("missing .hall for", lang)
             return
     with open(f"{OUT_DIR}/{family}.hall.{mode}", "w") as fp:
         for lang in sorted(LANGS[family]):
-            for toks in read_file(f"{IN_DIR}/{family}/{lang}.{mode}"):
+            for toks in read_file(f"{IN_DIR}/{lang}.{mode}"):
                 print(toks[0], toks[1], f"{lang};{toks[2]}", sep="\t", file=fp)
-            for i, toks in enumerate(read_file(f"{IN_DIR}/{family}/{lang}.hall")):
+            for i, toks in enumerate(read_file(f"{IN_DIR}/{lang}.hall")):
                 if i == MAX_HALL:
                     break
                 print(toks[0], toks[1], f"fake;{lang};{toks[2]}", sep="\t", file=fp)
