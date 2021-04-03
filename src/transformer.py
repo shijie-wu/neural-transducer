@@ -20,7 +20,9 @@ class SinusoidalPositionalEmbedding(nn.Module):
         self.embedding_dim = embedding_dim
         self.padding_idx = padding_idx
         self.weights = SinusoidalPositionalEmbedding.get_embedding(
-            init_size, embedding_dim, padding_idx,
+            init_size,
+            embedding_dim,
+            padding_idx,
         )
         self.register_buffer("_float_tensor", torch.FloatTensor(1))
 
@@ -53,7 +55,9 @@ class SinusoidalPositionalEmbedding(nn.Module):
         if self.weights is None or max_pos > self.weights.size(0):
             # recompute/expand embeddings if needed
             self.weights = SinusoidalPositionalEmbedding.get_embedding(
-                max_pos, self.embedding_dim, self.padding_idx,
+                max_pos,
+                self.embedding_dim,
+                self.padding_idx,
             )
         self.weights = self.weights.to(self._float_tensor)
 
@@ -324,11 +328,20 @@ class Transformer(nn.Module):
         params = sum([np.prod(p.size()) for p in model_parameters])
         return params
 
-    def loss(self, predict, target):
+    def loss(self, predict, target, reduction=True):
         """
         compute loss
         """
         predict = predict.view(-1, self.trg_vocab_size)
+
+        if not reduction:
+            loss = F.nll_loss(
+                predict, target.view(-1), ignore_index=PAD_IDX, reduction="none"
+            )
+            loss = loss.view(target.shape)
+            loss = loss.sum(dim=0) / (target != PAD_IDX).sum(dim=0)
+            return loss
+
         # nll_loss = F.nll_loss(predict, target.view(-1), ignore_index=PAD_IDX)
         target = target.view(-1, 1)
         non_pad_mask = target.ne(PAD_IDX)
@@ -338,15 +351,15 @@ class Transformer(nn.Module):
         loss = (1.0 - self.label_smooth) * nll_loss + self.label_smooth * smooth_loss
         return loss
 
-    def get_loss(self, data):
+    def get_loss(self, data, reduction=True):
         src, src_mask, trg, trg_mask = data
         out = self.forward(src, src_mask, trg, trg_mask)
-        loss = self.loss(out[:-1], trg[1:])
+        loss = self.loss(out[:-1], trg[1:], reduction=reduction)
         return loss
 
     def generate_square_subsequent_mask(self, sz):
         r"""Generate a square mask for the sequence. The masked positions are filled with float('-inf').
-            Unmasked positions are filled with float(0.0).
+        Unmasked positions are filled with float(0.0).
         """
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
         mask = (

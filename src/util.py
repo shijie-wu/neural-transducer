@@ -40,9 +40,9 @@ def grad_norm(parameters, norm_type=2):
 
 
 class WarmupInverseSquareRootSchedule(LambdaLR):
-    """ Linear warmup and then inverse square root decay.
-        Linearly increases learning rate from 0 to 1 over `warmup_steps` training steps.
-        Inverse square root decreases learning rate from 1. to 0. over remaining steps.
+    """Linear warmup and then inverse square root decay.
+    Linearly increases learning rate from 0 to 1 over `warmup_steps` training steps.
+    Inverse square root decreases learning rate from 1. to 0. over remaining steps.
     """
 
     def __init__(self, optimizer, warmup_steps, last_epoch=-1):
@@ -117,6 +117,28 @@ def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
     return "".join(random.choice(chars) for _ in range(size))
 
 
+def unpack_batch(batch):
+    if isinstance(batch, list) and isinstance(batch[0], list):
+        return [
+            [char for char in seq if char != BOS_IDX and char != EOS_IDX]
+            for seq in batch
+        ]
+    batch = batch.transpose(0, 1).cpu().numpy()
+    bs, seq_len = batch.shape
+    output = []
+    for i in range(bs):
+        seq = []
+        for j in range(seq_len):
+            elem = batch[i, j]
+            if elem == BOS_IDX:
+                continue
+            if elem == EOS_IDX:
+                break
+            seq.append(elem)
+        output.append(seq)
+    return output
+
+
 @dataclass
 class Eval:
     desc: str
@@ -128,7 +150,9 @@ class Evaluator(object):
     def __init__(self):
         pass
 
-    def evaluate_all(self, data_iter, nb_data, model, decode_fn) -> List[Eval]:
+    def evaluate_all(
+        self, data_iter, batch_size, nb_data, model, decode_fn
+    ) -> List[Eval]:
         raise NotImplementedError
 
 
@@ -150,19 +174,20 @@ class BasicEvaluator(Evaluator):
         dist = edit_distance(predict, ground_truth)
         return correct, dist
 
-    def evaluate_all(self, data_iter, nb_data, model, decode_fn):
+    def evaluate_all(self, data_iter, batch_size, nb_data, model, decode_fn):
         """
         evaluate all instances
         """
         correct, distance, nb_sample = 0, 0, 0
-        for src, trg in tqdm(data_iter(), total=nb_data):
-            pred, _ = decode_fn(model, src)
-            nb_sample += 1
-            trg = trg.view(-1).tolist()
-            trg = [x for x in trg if x != BOS_IDX and x != EOS_IDX]
-            corr, dist = self.evaluate(pred, trg)
-            correct += corr
-            distance += dist
+        for src, src_mask, trg, trg_mask in tqdm(data_iter(batch_size), total=nb_data):
+            pred, _ = decode_fn(model, src, src_mask)
+            pred = unpack_batch(pred)
+            trg = unpack_batch(trg)
+            for p, t in zip(pred, trg):
+                nb_sample += 1
+                corr, dist = self.evaluate(p, t)
+                correct += corr
+                distance += dist
         acc = round(correct / nb_sample * 100, 4)
         distance = round(distance / nb_sample, 4)
         return [
@@ -182,14 +207,16 @@ class G2PEvaluator(BasicEvaluator):
         correct, dist = super().evaluate(predict, ground_truth)
         return correct, dist / len(ground_truth)
 
-    def evaluate_all(self, data_iter, nb_data, model, decode_fn):
+    def evaluate_all(self, data_iter, batch_size, nb_data, model, decode_fn):
         src_dict = defaultdict(list)
-        for src, trg in tqdm(data_iter(), total=nb_data):
-            pred, _ = decode_fn(model, src)
-            trg = trg.view(-1).tolist()
-            trg = [x for x in trg if x != BOS_IDX and x != EOS_IDX]
-            corr, dist = self.evaluate(pred, trg)
-            src_dict[str(src.cpu().view(-1).tolist())].append((corr, dist))
+        for src, src_mask, trg, trg_mask in tqdm(data_iter(batch_size), total=nb_data):
+            pred, _ = decode_fn(model, src, src_mask)
+            src = unpack_batch(src)
+            pred = unpack_batch(pred)
+            trg = unpack_batch(trg)
+            for s, p, t in zip(src, pred, trg):
+                corr, dist = self.evaluate(p, t)
+                src_dict[str(s)].append((corr, dist))
         correct, distance, nb_sample = 0, 0, 0
         for evals in src_dict.values():
             corr, dist = evals[0]
@@ -234,51 +261,41 @@ class PairG2PEvaluator(PairBasicEvaluator, G2PEvaluator):
 class TranslitEvaluator(BasicEvaluator):
     """docstring for TranslitEvaluator"""
 
-    def evaluate_all(self, data_iter, nb_data, model, decode_fn):
+    def evaluate_all(self, data_iter, batch_size, nb_data, model, decode_fn):
         """
         evaluate all instances
         """
+        src_dict = defaultdict(list)
+        for src, src_mask, trg, trg_mask in tqdm(data_iter(batch_size), total=nb_data):
+            pred, _ = decode_fn(model, src, src_mask)
+            src = unpack_batch(src)
+            pred = unpack_batch(pred)
+            trg = unpack_batch(trg)
+            for s, p, t in zip(src, pred, trg):
+                corr, dist = self.evaluate(p, t)
+                src_dict[str(s)].append((corr, dist, len(p), len(t)))
 
-        def helper(src, trgs):
-            pred, _ = decode_fn(model, src)
-            best_corr, best_dist, closest_ref = 0, float("inf"), None
-            for trg in trgs:
-                trg = trg[1:-1].view(-1)
-                corr, dist = self.evaluate(pred, trg)
-                best_corr = max(best_corr, corr)
-                if dist < best_dist:
-                    best_dist = dist
-                    closest_ref = trg
-            lcs = (len(closest_ref) + len(pred) - best_dist) / 2
-            r = lcs / len(closest_ref)
+        correct, fscore, nb_sample = 0, 0, 0
+        for evals in src_dict.values():
+            corr, dist, pred_len, trg_len = evals[0]
+            for c, d, pl, tl in evals:
+                if c > corr:
+                    corr = c
+                if d < dist:
+                    dist = d
+                    pred_len = pl
+                    trg_len = tl
+            lcs = (trg_len + pred_len - dist) / 2
+            r = lcs / trg_len
             try:
-                p = lcs / len(pred)
+                p = lcs / pred_len
             except ZeroDivisionError:
                 p = 0
             f = 2 * r * p / (r + p)
-            return best_corr, f
 
-        correct, fscore, nb_sample = 0, 0, 0
-        prev_src, trgs = None, []
-
-        for src, trg in tqdm(data_iter(), total=nb_data):
-            if (
-                prev_src is not None
-                and self.evaluate(src.view(-1), prev_src.view(-1))[0] == 0
-            ):
-                corr, f = helper(prev_src, trgs)
-                correct += corr
-                fscore += f
-                nb_sample += 1
-                prev_src = src
-                trgs = [trg]
-            else:
-                prev_src = src
-                trgs.append(trg)
-        corr, f = helper(prev_src, trgs)
-        correct += corr
-        fscore += f
-        nb_sample += 1
+            correct += corr
+            fscore += f
+            nb_sample += 1
 
         acc = round(correct / nb_sample * 100, 4)
         mean_fscore = round(fscore / nb_sample, 4)

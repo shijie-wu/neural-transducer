@@ -279,10 +279,10 @@ class BaseTrainer(object):
         else:
             raise ValueError(f"wrong mode: {mode}")
 
-    def evaluate(self, mode, epoch_idx, decode_fn) -> List[util.Eval]:
+    def evaluate(self, mode, batch_size, epoch_idx, decode_fn) -> List[util.Eval]:
         raise NotImplementedError
 
-    def decode(self, mode, write_fp, decode_fn):
+    def decode(self, mode, batch_size, write_fp, decode_fn):
         raise NotImplementedError
 
     def update_lr_and_stop_early(self, epoch_idx, devloss, estop):
@@ -321,23 +321,23 @@ class BaseTrainer(object):
     def select_model(self):
         raise NotImplementedError
 
-    def reload_and_test(self, model_fp, best_fp, bs, decode_fn):
+    def reload_and_test(self, model_fp, best_fp, batch_size, decode_fn):
         self.model = None
         self.logger.info(f"loading {best_fp} for testing")
         self.load_model(best_fp)
-        self.calc_loss(DEV, bs, -1)
+        self.calc_loss(DEV, batch_size, -1)
         self.logger.info("decoding dev set")
-        self.decode(DEV, f"{model_fp}.decode", decode_fn)
-        results = self.evaluate(DEV, -1, decode_fn)
+        self.decode(DEV, batch_size, f"{model_fp}.decode", decode_fn)
+        results = self.evaluate(DEV, batch_size, -1, decode_fn)
         if results:
             results = " ".join([f"{r.desc} {r.res}" for r in results])
             self.logger.info(f'DEV {model_fp.split("/")[-1]} {results}')
 
         if self.data.test_file is not None:
-            self.calc_loss(TEST, bs, -1)
+            self.calc_loss(TEST, batch_size, -1)
             self.logger.info("decoding test set")
-            self.decode(TEST, f"{model_fp}.decode", decode_fn)
-            results = self.evaluate(TEST, -1, decode_fn)
+            self.decode(TEST, batch_size, f"{model_fp}.decode", decode_fn)
+            results = self.evaluate(TEST, batch_size, -1, decode_fn)
             if results:
                 results = " ".join([f"{r.desc} {r.res}" for r in results])
                 self.logger.info(f'TEST {model_fp.split("/")[-1]} {results}')
@@ -380,7 +380,7 @@ class BaseTrainer(object):
                 continue
             with torch.no_grad():
                 devloss = self.calc_loss(DEV, params.bs, epoch_idx)
-                eval_res = self.evaluate(DEV, epoch_idx, decode_fn)
+                eval_res = self.evaluate(DEV, params.bs, epoch_idx, decode_fn)
             if self.update_lr_and_stop_early(epoch_idx, devloss, params.estop):
                 finish = True
                 break

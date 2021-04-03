@@ -12,7 +12,6 @@ import model
 import transformer
 import util
 from decoding import Decode, get_decode_fn
-from model import dummy_mask
 from trainer import BaseTrainer
 
 tqdm.monitor_interval = 0
@@ -249,41 +248,40 @@ class Trainer(BaseTrainer):
             else:
                 self.evaluator = util.BasicEvaluator()
 
-    def evaluate(self, mode, epoch_idx, decode_fn):
+    def evaluate(self, mode, batch_size, epoch_idx, decode_fn):
         self.model.eval()
-        sampler, nb_instance = self.iterate_instance(mode)
-        decode_fn.reset()
+        sampler, nb_batch = self.iterate_batch(mode, batch_size)
         results = self.evaluator.evaluate_all(
-            sampler, nb_instance, self.model, decode_fn
+            sampler, batch_size, nb_batch, self.model, decode_fn
         )
-        decode_fn.reset()
         for result in results:
             self.logger.info(
                 f"{mode} {result.long_desc} is {result.res} at epoch {epoch_idx}"
             )
         return results
 
-    def decode(self, mode, write_fp, decode_fn):
+    def decode(self, mode, batch_size, write_fp, decode_fn):
         self.model.eval()
         cnt = 0
-        sampler, nb_instance = self.iterate_instance(mode)
-        decode_fn.reset()
+        sampler, nb_batch = self.iterate_batch(mode, batch_size)
         with open(f"{write_fp}.{mode}.tsv", "w") as fp:
             fp.write("prediction\ttarget\tloss\tdist\n")
-            for src, trg in tqdm(sampler(), total=nb_instance):
-                pred, _ = decode_fn(self.model, src)
-                dist = util.edit_distance(pred, trg.view(-1).tolist()[1:-1])
+            for src, src_mask, trg, trg_mask in tqdm(
+                sampler(batch_size), total=nb_batch
+            ):
+                pred, _ = decode_fn(self.model, src, src_mask)
 
-                src_mask = dummy_mask(src)
-                trg_mask = dummy_mask(trg)
                 data = (src, src_mask, trg, trg_mask)
-                loss = self.model.get_loss(data).item()
+                losses = self.model.get_loss(data, reduction=False).cpu()
 
-                trg = self.data.decode_target(trg)[1:-1]
-                pred = self.data.decode_target(pred)
-                fp.write(f'{" ".join(pred)}\t{" ".join(trg)}\t{loss}\t{dist}\n')
-                cnt += 1
-        decode_fn.reset()
+                pred = util.unpack_batch(pred)
+                trg = util.unpack_batch(trg)
+                for p, t, loss in zip(pred, trg, losses):
+                    dist = util.edit_distance(p, t)
+                    p = self.data.decode_target(p)
+                    t = self.data.decode_target(t)
+                    fp.write(f'{" ".join(p)}\t{" ".join(t)}\t{loss.item()}\t{dist}\n')
+                    cnt += 1
         self.logger.info(f"finished decoding {cnt} {mode} instance")
 
     def select_model(self):
@@ -295,7 +293,9 @@ class Trainer(BaseTrainer):
                 continue
             if (
                 type(self.evaluator) == util.BasicEvaluator
+                or type(self.evaluator) == util.PairBasicEvaluator
                 or type(self.evaluator) == util.G2PEvaluator
+                or type(self.evaluator) == util.PairG2PEvaluator
                 or type(self.evaluator) == util.P2GEvaluator
                 or type(self.evaluator) == util.HistnormEvaluator
             ):
@@ -305,7 +305,10 @@ class Trainer(BaseTrainer):
                     and m.evaluation_result[1].res <= best_res.evaluation_result[1].res
                 ):
                     best_res = m
-            elif type(self.evaluator) == util.TranslitEvaluator:
+            elif (
+                type(self.evaluator) == util.TranslitEvaluator
+                or type(self.evaluator) == util.PairTranslitEvaluator
+            ):
                 if (
                     m.evaluation_result[0].res >= best_res.evaluation_result[0].res
                     and m.evaluation_result[1].res >= best_res.evaluation_result[1].res

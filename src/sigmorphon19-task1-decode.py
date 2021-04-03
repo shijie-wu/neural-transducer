@@ -2,13 +2,13 @@
 Decode model
 """
 import argparse
-from functools import partial
 
 import torch
 
 from dataloader import BOS, EOS, UNK_IDX
-from decoding import decode_beam_search, decode_greedy
-from util import maybe_mkdir
+from decoding import Decoder
+from model import dummy_mask
+from util import maybe_mkdir, unpack_batch
 
 
 def get_args():
@@ -21,23 +21,8 @@ def get_args():
     parser.add_argument('--max_len', default=100, type=int)
     parser.add_argument('--decode', default='greedy', choices=['greedy', 'beam'])
     parser.add_argument('--beam_size', default=5, type=int)
-    parser.add_argument('--nonorm', default=False, action='store_true')
     return parser.parse_args()
     # fmt: on
-
-
-def setup_inference(opt):
-    decode_fn = None
-    if opt.decode == "greedy":
-        decode_fn = partial(decode_greedy, max_len=opt.max_len)
-    elif opt.decode == "beam":
-        decode_fn = partial(
-            decode_beam_search,
-            max_len=opt.max_len,
-            nb_beam=opt.beam_size,
-            norm=not opt.nonorm,
-        )
-    return decode_fn
 
 
 def read_file(filename, lang_tag):
@@ -74,7 +59,7 @@ def encode(model, lemma, tags, device):
 def main():
     opt = get_args()
 
-    decode_fn = setup_inference(opt)
+    decode_fn = Decoder(opt.decode, max_len=opt.max_len, beam_size=opt.beam_size)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = torch.load(open(opt.model, mode="rb"), map_location=device)
@@ -89,7 +74,9 @@ def main():
     with open(opt.out_file, "w", encoding="utf-8") as fp:
         for lemma, tags in read_file(opt.in_file, opt.lang):
             src = encode(model, lemma, tags, device)
-            pred, _ = decode_fn(model, src)
+            src_mask = dummy_mask(src)
+            pred, _ = decode_fn(model, src, src_mask)
+            pred = unpack_batch(pred)[0]
             pred_out = "".join(decode_trg(pred))
             fp.write(f'{"".join(lemma)}\t{pred_out}\t{";".join(tags[1:])}\n')
 

@@ -13,7 +13,7 @@ This repo contains a set of neural transducer, e.g. sequence-to-sequence model, 
 
 ## Miscellaneous
 
-- Environment (conda): `environment.yml`
+- Environment (conda): `environment.yml` (runtime) or `environment-devel.yml` (development)
 - Pre-commit check: `pre-commit run --all-files`
 - Compile: `make`
 

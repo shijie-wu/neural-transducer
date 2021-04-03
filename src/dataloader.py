@@ -99,7 +99,7 @@ class Seq2SeqDataLoader(Dataloader):
         mask = (data > 0).float()
         return data, mask
 
-    def _batch_sample(self, batch_size, file):
+    def _batch_sample(self, batch_size, file, shuffle):
         key = self._file_identifier(file)
         if key not in self.batch_data:
             lst = list()
@@ -111,7 +111,7 @@ class Seq2SeqDataLoader(Dataloader):
 
         src_data, src_mask, trg_data, trg_mask = self.batch_data[key]
         nb_example = len(src_data[0])
-        if self.shuffle:
+        if shuffle:
             idx = np.random.permutation(nb_example)
         else:
             idx = np.arange(nb_example)
@@ -128,13 +128,13 @@ class Seq2SeqDataLoader(Dataloader):
             yield (src_data_b, src_mask_b, trg_data_b, trg_mask_b)
 
     def train_batch_sample(self, batch_size):
-        yield from self._batch_sample(batch_size, self.train_file)
+        yield from self._batch_sample(batch_size, self.train_file, shuffle=self.shuffle)
 
     def dev_batch_sample(self, batch_size):
-        yield from self._batch_sample(batch_size, self.dev_file)
+        yield from self._batch_sample(batch_size, self.dev_file, shuffle=False)
 
     def test_batch_sample(self, batch_size):
-        yield from self._batch_sample(batch_size, self.test_file)
+        yield from self._batch_sample(batch_size, self.test_file, shuffle=False)
 
     def encode_source(self, sent):
         if sent[0] != BOS:
@@ -372,7 +372,7 @@ class AlignSIGMORPHON2017Task1(AlignSeq2SeqDataLoader, SIGMORPHON2017Task1):
                     attr[attr_idx] = self.attr_c2i.get(tag, UNK_IDX)
             yield src, trg, attr
 
-    def _batch_sample(self, batch_size, file):
+    def _batch_sample(self, batch_size, file, shuffle):
         key = self._file_identifier(file)
         if key not in self.batch_data:
             lst = list()
@@ -388,7 +388,7 @@ class AlignSIGMORPHON2017Task1(AlignSeq2SeqDataLoader, SIGMORPHON2017Task1):
         data = self.batch_data[key]
         (src_data, attr_data), src_mask, trg_data, trg_mask = data
         nb_example = len(src_data[0])
-        if self.shuffle:
+        if shuffle:
             idx = np.random.permutation(nb_example)
         else:
             idx = np.arange(nb_example)
@@ -440,7 +440,7 @@ class TagSIGMORPHON2017Task1(SIGMORPHON2017Task1):
                     attr[attr_idx] = self.attr_c2i.get(tag, UNK_IDX)
             yield src, trg, attr
 
-    def _batch_sample(self, batch_size, file):
+    def _batch_sample(self, batch_size, file, shuffle):
         key = self._file_identifier(file)
         if key not in self.batch_data:
             lst = list()
@@ -456,7 +456,7 @@ class TagSIGMORPHON2017Task1(SIGMORPHON2017Task1):
         data = self.batch_data[key]
         (src_data, attr_data), src_mask, trg_data, trg_mask = data
         nb_example = len(src_data[0])
-        if self.shuffle:
+        if shuffle:
             idx = np.random.permutation(nb_example)
         else:
             idx = np.arange(nb_example)

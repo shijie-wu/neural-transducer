@@ -213,18 +213,25 @@ class Transducer(nn.Module):
         params = sum([np.prod(p.size()) for p in model_parameters])
         return params
 
-    def loss(self, predict, target):
+    def loss(self, predict, target, reduction=True):
         """
         compute loss
         """
-        return F.nll_loss(
-            predict.view(-1, self.trg_vocab_size), target.view(-1), ignore_index=PAD_IDX
-        )
+        predict = predict.view(-1, self.trg_vocab_size)
+        if not reduction:
+            loss = F.nll_loss(
+                predict, target.view(-1), ignore_index=PAD_IDX, reduction="none"
+            )
+            loss = loss.view(target.shape)
+            loss = loss.sum(dim=0) / (target != PAD_IDX).sum(dim=0)
+            return loss
 
-    def get_loss(self, data):
+        return F.nll_loss(predict, target.view(-1), ignore_index=PAD_IDX)
+
+    def get_loss(self, data, reduction=True):
         src, src_mask, trg, _ = data
         out = self.forward(src, src_mask, trg)
-        loss = self.loss(out, trg[1:])
+        loss = self.loss(out, trg[1:], reduction=reduction)
         return loss
 
 
@@ -281,7 +288,7 @@ class HMMTransducer(Transducer):
         super().__init__(**kwargs)
         del self.attn
 
-    def loss(self, predict, target):
+    def loss(self, predict, target, reduction=True):
         assert isinstance(predict, HMMState)
         seq_len = target.shape[0]
         hmm = HMM(
@@ -292,6 +299,8 @@ class HMMTransducer(Transducer):
             predict.emiss,
         )
         loss = hmm.p_x(target, ignore_index=PAD_IDX)
+        if not reduction:
+            return -torch.logsumexp(loss, dim=-1) / seq_len
         return -torch.logsumexp(loss, dim=-1).mean() / seq_len
 
     def decode(self, enc_hs, enc_mask, trg_batch):
@@ -489,9 +498,10 @@ class HardMonoTransducer(Transducer):
         output = []
         hidden = self.dec_rnn.get_init_hx(trg_bat_siz)
         for idx in range(trg_seq_len - 1):
-            for j in range(trg_bat_siz):
-                if trg_batch[idx, j] == STEP_IDX:
-                    attn_pos[0, j] += 1
+            # for j in range(trg_bat_siz):
+            #     if trg_batch[idx, j] == STEP_IDX:
+            #         attn_pos[0, j] += 1
+            attn_pos = attn_pos + (trg_batch[idx] == STEP_IDX)
             input_ = trg_embed[idx, :]
             word_logprob, hidden, _ = self.decode_step(
                 enc_hs, enc_mask, input_, hidden, attn_pos
@@ -502,8 +512,6 @@ class HardMonoTransducer(Transducer):
 
 class InputFeedTransducer(Transducer):
     def __init__(self, **kwargs):
-        """
-        """
         super().__init__(**kwargs)
         print("previous size\n{}\n{}".format(self.linear_out, self.final_out))
         self.scale_out = self.calculate_scale_out(
@@ -549,8 +557,6 @@ class InputFeedTransducer(Transducer):
 
 class LargeInputFeedTransducer(InputFeedTransducer):
     def __init__(self, **kwargs):
-        """
-        """
         super().__init__(**kwargs)
         # print('previous size\n{}\n{}\n{}'.format(self.linear_out, self.final_out, self.merge_input))
         self.scale_out = self.out_dim
@@ -689,12 +695,7 @@ class Categorical(Distribution):
 
 
 class ApproxiHardTransducer(Transducer):
-    """
-    """
-
     def __init__(self, *, nb_sample, **kwargs):
-        """
-        """
         super().__init__(**kwargs)
         self.nb_sample = nb_sample
         self.log_probs = []
@@ -703,8 +704,6 @@ class ApproxiHardTransducer(Transducer):
         self.gamma = 1
 
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        """
-        """
         h_t, hidden = self.dec_rnn(input_, hidden)
 
         # ht: batch x trg_hid_dim
@@ -733,7 +732,7 @@ class ApproxiHardTransducer(Transducer):
         self.log_probs = []
         return super().encode(src_batch)
 
-    def loss(self, predict, target):
+    def loss(self, predict, target, reduction=True):
         """
         compute loss
         """
@@ -743,6 +742,12 @@ class ApproxiHardTransducer(Transducer):
             ignore_index=PAD_IDX,
             reduce=False,
         )
+
+        if not reduction:
+            nll_loss = nll_loss.view(target.shape)
+            nll_loss = nll_loss.sum(dim=0) / (target != PAD_IDX).sum(dim=0)
+            return nll_loss
+
         policy_loss = []
         for log_prob, reward in zip(self.log_probs, nll_loss):
             policy_loss.append(-log_prob * (reward - self.aver_reward))
@@ -756,8 +761,6 @@ class ApproxiHardTransducer(Transducer):
 
 class ApproxiHardInputFeedTransducer(ApproxiHardTransducer, InputFeedTransducer):
     def decode_step(self, enc_hs, enc_mask, input_, hidden):
-        """
-        """
         bs = input_.shape[0]
         if isinstance(hidden[0], tuple):
             prev_hidden, prev_context = hidden
@@ -795,5 +798,4 @@ def dummy_mask(seq):
     """
     if isinstance(seq, tuple):
         seq = seq[0]
-    assert len(seq.size()) == 1 or (len(seq.size()) == 2 and seq.size(1) == 1)
     return torch.ones_like(seq, dtype=torch.float)
