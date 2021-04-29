@@ -270,6 +270,7 @@ class Trainer(BaseTrainer):
                 sampler(batch_size), total=nb_batch
             ):
                 pred, _ = decode_fn(self.model, src, src_mask)
+                self.evaluator.add(src, pred, trg)
 
                 data = (src, src_mask, trg, trg_mask)
                 losses = self.model.get_loss(data, reduction=False).cpu()
@@ -283,6 +284,8 @@ class Trainer(BaseTrainer):
                     fp.write(f'{" ".join(p)}\t{" ".join(t)}\t{loss.item()}\t{dist}\n')
                     cnt += 1
         self.logger.info(f"finished decoding {cnt} {mode} instance")
+        results = self.evaluator.compute(reset=True)
+        return results
 
     def select_model(self):
         best_res = [m for m in self.models if m.evaluation_result][0]

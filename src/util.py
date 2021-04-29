@@ -148,16 +148,41 @@ class Eval:
 
 class Evaluator(object):
     def __init__(self):
-        pass
+        raise NotImplementedError
+
+    def reset(self):
+        raise NotImplementedError
+
+    def evaluate(self, predict, ground_truth):
+        raise NotImplementedError
+
+    def add(self, source, predict, target):
+        raise NotImplementedError
+
+    def compute(self, reset=True) -> List[Eval]:
+        raise NotImplementedError
 
     def evaluate_all(
         self, data_iter, batch_size, nb_data, model, decode_fn
     ) -> List[Eval]:
-        raise NotImplementedError
+        for src, src_mask, trg, trg_mask in tqdm(data_iter(batch_size), total=nb_data):
+            pred, _ = decode_fn(model, src, src_mask)
+            self.add(src, pred, trg)
+        return self.compute(reset=True)
 
 
 class BasicEvaluator(Evaluator):
     """docstring for BasicEvaluator"""
+
+    def __init__(self):
+        self.correct = 0
+        self.distance = 0
+        self.nb_sample = 0
+
+    def reset(self):
+        self.correct = 0
+        self.distance = 0
+        self.nb_sample = 0
 
     def evaluate(self, predict, ground_truth):
         """
@@ -174,24 +199,22 @@ class BasicEvaluator(Evaluator):
         dist = edit_distance(predict, ground_truth)
         return correct, dist
 
-    def evaluate_all(self, data_iter, batch_size, nb_data, model, decode_fn):
-        """
-        evaluate all instances
-        """
-        correct, distance, nb_sample = 0, 0, 0
-        for src, src_mask, trg, trg_mask in tqdm(data_iter(batch_size), total=nb_data):
-            pred, _ = decode_fn(model, src, src_mask)
-            pred = unpack_batch(pred)
-            trg = unpack_batch(trg)
-            for p, t in zip(pred, trg):
-                nb_sample += 1
-                corr, dist = self.evaluate(p, t)
-                correct += corr
-                distance += dist
-        acc = round(correct / nb_sample * 100, 4)
-        distance = round(distance / nb_sample, 4)
+    def add(self, source, predict, target):
+        predict = unpack_batch(predict)
+        target = unpack_batch(target)
+        for p, t in zip(predict, target):
+            correct, distance = self.evaluate(p, t)
+            self.correct += correct
+            self.distance += distance
+            self.nb_sample += 1
+
+    def compute(self, reset=True):
+        accuracy = round(self.correct / self.nb_sample * 100, 4)
+        distance = round(self.distance / self.nb_sample, 4)
+        if reset:
+            self.reset()
         return [
-            Eval("acc", "accuracy", acc),
+            Eval("acc", "accuracy", accuracy),
             Eval("dist", "average edit distance", distance),
         ]
 
@@ -203,22 +226,27 @@ class HistnormEvaluator(BasicEvaluator):
 
 
 class G2PEvaluator(BasicEvaluator):
+    def __init__(self):
+        self.src_dict = defaultdict(list)
+
+    def reset(self):
+        self.src_dict = defaultdict(list)
+
     def evaluate(self, predict, ground_truth):
         correct, dist = super().evaluate(predict, ground_truth)
         return correct, dist / len(ground_truth)
 
-    def evaluate_all(self, data_iter, batch_size, nb_data, model, decode_fn):
-        src_dict = defaultdict(list)
-        for src, src_mask, trg, trg_mask in tqdm(data_iter(batch_size), total=nb_data):
-            pred, _ = decode_fn(model, src, src_mask)
-            src = unpack_batch(src)
-            pred = unpack_batch(pred)
-            trg = unpack_batch(trg)
-            for s, p, t in zip(src, pred, trg):
-                corr, dist = self.evaluate(p, t)
-                src_dict[str(s)].append((corr, dist))
+    def add(self, source, predict, target):
+        source = unpack_batch(source)
+        predict = unpack_batch(predict)
+        target = unpack_batch(target)
+        for s, p, t in zip(source, predict, target):
+            correct, distance = self.evaluate(p, t)
+            self.src_dict[str(s)].append((correct, distance))
+
+    def compute(self, reset=True):
         correct, distance, nb_sample = 0, 0, 0
-        for evals in src_dict.values():
+        for evals in self.src_dict.values():
             corr, dist = evals[0]
             for c, d in evals:
                 if c > corr:
@@ -230,6 +258,8 @@ class G2PEvaluator(BasicEvaluator):
             nb_sample += 1
         acc = round(correct / nb_sample * 100, 4)
         distance = round(distance / nb_sample, 4)
+        if reset:
+            self.reset()
         return [
             Eval("acc", "accuracy", acc),
             Eval("per", "phenome error rate", distance),
@@ -237,8 +267,8 @@ class G2PEvaluator(BasicEvaluator):
 
 
 class P2GEvaluator(G2PEvaluator):
-    def evaluate_all(self, data_iter, nb_data, model, decode_fn):
-        results = super().evaluate_all(data_iter, nb_data, model, decode_fn)
+    def compute(self, reset=True):
+        results = super().compute(reset=reset)
         return [results[0], Eval("ger", "grapheme error rate", results[1].res)]
 
 
@@ -261,22 +291,23 @@ class PairG2PEvaluator(PairBasicEvaluator, G2PEvaluator):
 class TranslitEvaluator(BasicEvaluator):
     """docstring for TranslitEvaluator"""
 
-    def evaluate_all(self, data_iter, batch_size, nb_data, model, decode_fn):
-        """
-        evaluate all instances
-        """
-        src_dict = defaultdict(list)
-        for src, src_mask, trg, trg_mask in tqdm(data_iter(batch_size), total=nb_data):
-            pred, _ = decode_fn(model, src, src_mask)
-            src = unpack_batch(src)
-            pred = unpack_batch(pred)
-            trg = unpack_batch(trg)
-            for s, p, t in zip(src, pred, trg):
-                corr, dist = self.evaluate(p, t)
-                src_dict[str(s)].append((corr, dist, len(p), len(t)))
+    def __init__(self):
+        self.src_dict = defaultdict(list)
 
+    def reset(self):
+        self.src_dict = defaultdict(list)
+
+    def add(self, source, predict, target):
+        source = unpack_batch(source)
+        predict = unpack_batch(predict)
+        target = unpack_batch(target)
+        for s, p, t in zip(source, predict, target):
+            correct, distance = self.evaluate(p, t)
+            self.src_dict[str(s)].append((correct, distance, len(p), len(t)))
+
+    def compute(self, reset=True):
         correct, fscore, nb_sample = 0, 0, 0
-        for evals in src_dict.values():
+        for evals in self.src_dict.values():
             corr, dist, pred_len, trg_len = evals[0]
             for c, d, pl, tl in evals:
                 if c > corr:
@@ -299,6 +330,8 @@ class TranslitEvaluator(BasicEvaluator):
 
         acc = round(correct / nb_sample * 100, 4)
         mean_fscore = round(fscore / nb_sample, 4)
+        if reset:
+            self.reset()
         return [
             Eval("acc", "accuracy", acc),
             Eval("meanfs", "mean F-score", mean_fscore),

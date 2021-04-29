@@ -282,7 +282,7 @@ class BaseTrainer(object):
     def evaluate(self, mode, batch_size, epoch_idx, decode_fn) -> List[util.Eval]:
         raise NotImplementedError
 
-    def decode(self, mode, batch_size, write_fp, decode_fn):
+    def decode(self, mode, batch_size, write_fp, decode_fn) -> List[util.Eval]:
         raise NotImplementedError
 
     def update_lr_and_stop_early(self, epoch_idx, devloss, estop):
@@ -327,18 +327,22 @@ class BaseTrainer(object):
         self.load_model(best_fp)
         self.calc_loss(DEV, batch_size, -1)
         self.logger.info("decoding dev set")
-        self.decode(DEV, batch_size, f"{model_fp}.decode", decode_fn)
-        results = self.evaluate(DEV, batch_size, -1, decode_fn)
+        results = self.decode(DEV, batch_size, f"{model_fp}.decode", decode_fn)
         if results:
+            for result in results:
+                self.logger.info(f"DEV {result.long_desc} is {result.res} at epoch -1")
             results = " ".join([f"{r.desc} {r.res}" for r in results])
             self.logger.info(f'DEV {model_fp.split("/")[-1]} {results}')
 
         if self.data.test_file is not None:
             self.calc_loss(TEST, batch_size, -1)
             self.logger.info("decoding test set")
-            self.decode(TEST, batch_size, f"{model_fp}.decode", decode_fn)
-            results = self.evaluate(TEST, batch_size, -1, decode_fn)
+            results = self.decode(TEST, batch_size, f"{model_fp}.decode", decode_fn)
             if results:
+                for result in results:
+                    self.logger.info(
+                        f"TEST {result.long_desc} is {result.res} at epoch -1"
+                    )
                 results = " ".join([f"{r.desc} {r.res}" for r in results])
                 self.logger.info(f'TEST {model_fp.split("/")[-1]} {results}')
 
