@@ -1,6 +1,6 @@
 # Neural Transducer
 
-This repo contains a set of neural transducer, e.g. sequence-to-sequence model, focusing on character-level tasks. It powers the following papars and workshop.
+This repo contains a set of neural transducer, e.g. sequence-to-sequence model, focusing on character-level tasks. It powers the following papers and workshop.
 
 - Ekaterina Vylomova, Jennifer White, Elizabeth Salesky, Sabrina J. Mielke, Shijie Wu, Edoardo Ponti, Rowan Hall Maudslay, Ran Zmigrod, Josef Valvoda, Svetlana Toldova, Francis Tyers, Elena Klyachko, Ilya Yegorov, Natalia Krizhanovsky, Paula Czarnowska, Irene Nikkarinen, Andrew Krizhanovsky, Tiago Pimentel, Lucas Torroba Hennigen, Christo Kirov, Garrett Nicolai, Adina Williams, Antonios Anastasopoulos, Hilaria Cruz, Eleanor Chodroff, Ryan Cotterell, Miikka Silfverberg, and Mans Hulden. [*SIGMORPHON 2020 Shared Task 0: Typologically Diverse Morphological Inflection*](https://arxiv.org/abs/2006.11572). SIGMORPHON. 2020. ([Experiments Detail](example/sigmorphon2020-shared-tasks))
 - Shijie Wu, Ryan Cotterell, and Mans Hulden. [*Applying the Transformer to Character-level Transduction*](https://arxiv.org/abs/2005.10213). arXiv. 2020. ([Experiments Detail](example/transformer))
