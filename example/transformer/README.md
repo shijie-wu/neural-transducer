@@ -1,6 +1,6 @@
 # Applying the Transformer to Character-level Transduction
 
-Shijie Wu, Ryan Cotterell, and Mans Hulden. [*Applying the Transformer to Character-level Transduction*](https://arxiv.org/abs/2005.10213). arXiv. 2020.
+Shijie Wu, Ryan Cotterell, and Mans Hulden. [*Applying the Transformer to Character-level Transduction*](https://arxiv.org/abs/2005.10213). EACL. 2021.
 
 ## Experiments
 
