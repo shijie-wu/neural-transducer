@@ -88,8 +88,8 @@ def decode_greedy_default(
     """
     transducer.eval()
     enc_hs = transducer.encode(src_sentence)
+    _, bs = src_mask.shape
 
-    _, bs = src_sentence.shape
     hidden = transducer.dec_rnn.get_init_hx(bs)
     input_ = torch.tensor([trg_bos] * bs, device=DEVICE)
     output = input_.view(1, bs)
@@ -126,11 +126,8 @@ def decode_greedy_mono(
     """
     assert isinstance(transducer, HardMonoTransducer)
     transducer.eval()
-    if isinstance(src_sentence, tuple):
-        seq_len, bs = src_sentence[0].shape
-    else:
-        seq_len, bs = src_sentence.shape
     enc_hs = transducer.encode(src_sentence)
+    seq_len, bs = src_mask.shape
 
     attn_pos = torch.tensor([0] * bs, device=DEVICE).view(1, -1)
     hidden = transducer.dec_rnn.get_init_hx(bs)
@@ -169,9 +166,8 @@ def decode_greedy_hmm(
 ):
     transducer.eval()
     enc_hs = transducer.encode(src_sentence)
-    T = src_mask.shape[0]
+    T, bs = src_mask.shape
 
-    _, bs = src_sentence.shape
     hidden = transducer.dec_rnn.get_init_hx(bs)
     input_ = torch.tensor([trg_bos] * bs, device=DEVICE)
     output = input_.view(1, bs)
@@ -303,8 +299,8 @@ def decode_beam_search_default(
 
     transducer.eval()
     enc_hs = transducer.encode(src_sentence)
+    _, bs = src_mask.shape
 
-    _, bs = src_sentence.shape
     hidden = transducer.dec_rnn.get_init_hx(bs)
     input_ = torch.tensor([trg_bos] * bs, device=DEVICE)
     output = input_.view(1, bs)
@@ -467,11 +463,8 @@ def decode_beam_mono(
     assert isinstance(transducer, HardMonoTransducer)
 
     transducer.eval()
-    if isinstance(src_sentence, tuple):
-        seq_len, bs = src_sentence[0].shape
-    else:
-        seq_len, bs = src_sentence.shape
     enc_hs = transducer.encode(src_sentence)
+    seq_len, bs = src_mask.shape
 
     attn_pos = torch.tensor([0] * bs, device=DEVICE).view(1, -1)
     hidden = transducer.dec_rnn.get_init_hx(bs)
@@ -558,9 +551,8 @@ def decode_beam_hmm(
 
     transducer.eval()
     enc_hs = transducer.encode(src_sentence)
-    T = src_mask.shape[0]
+    T, bs = src_mask.shape
 
-    _, bs = src_sentence.shape
     hidden = transducer.dec_rnn.get_init_hx(bs)
     input_ = torch.tensor([trg_bos] * bs, device=DEVICE)
     output = input_.view(1, bs)
