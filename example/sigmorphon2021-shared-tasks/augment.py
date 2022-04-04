@@ -28,12 +28,12 @@ def read_data(filename):
 
 
 def find_good_range(a, b):
-    mask = [(a[i] == b[i] and a[i] != u" ") for i in range(len(a))]
+    mask = [(a[i] == b[i] and a[i] != " ") for i in range(len(a))]
     if sum(mask) == 0:
         return []
         # Some times the alignment is off-by-one
         b = " " + b
-        mask = [(a[i] == b[i] and a[i] != u" ") for i in range(len(a))]
+        mask = [(a[i] == b[i] and a[i] != " ") for i in range(len(a))]
     ranges = []
     prev = False
     for i, k in enumerate(mask):
@@ -60,7 +60,7 @@ def augment(inputs, outputs, tags, characters):
 
     vocab = list(characters)
     try:
-        vocab.remove(u" ")
+        vocab.remove(" ")
     except ValueError:
         pass
 

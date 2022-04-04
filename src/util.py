@@ -34,7 +34,7 @@ def grad_norm(parameters, norm_type=2):
         total_norm = 0
         for p in parameters:
             param_norm = p.grad.detach().norm(norm_type)
-            total_norm += param_norm ** norm_type
+            total_norm += param_norm**norm_type
         total_norm = total_norm ** (1.0 / norm_type)
     return total_norm
 
@@ -47,7 +47,7 @@ class WarmupInverseSquareRootSchedule(LambdaLR):
 
     def __init__(self, optimizer, warmup_steps, last_epoch=-1):
         self.warmup_steps = warmup_steps
-        self.decay_factor = warmup_steps ** 0.5
+        self.decay_factor = warmup_steps**0.5
         super(WarmupInverseSquareRootSchedule, self).__init__(
             optimizer, self.lr_lambda, last_epoch=last_epoch
         )
@@ -55,7 +55,7 @@ class WarmupInverseSquareRootSchedule(LambdaLR):
     def lr_lambda(self, step):
         if step < self.warmup_steps:
             return float(step) / float(max(1, self.warmup_steps))
-        return self.decay_factor * step ** -0.5
+        return self.decay_factor * step**-0.5
 
 
 def maybe_mkdir(filename):
