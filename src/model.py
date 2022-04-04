@@ -447,7 +447,7 @@ class HardMonoTransducer(Transducer):
         )
         c /= 4
         if layer > 1:
-            c -= (layer - 1) * (2 * ht ** 2 + 2 * ht)
+            c -= (layer - 1) * (2 * ht**2 + 2 * ht)
             b += (layer - 1) * 2
             b /= layer * 2 - 1
             c /= layer * 2 - 1
