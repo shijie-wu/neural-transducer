@@ -29,11 +29,11 @@ Run input-invariant transformer [(Wu and Cotterell, 2019)](https://arxiv.org/abs
 model=tagtransformer # input-invariant transformer, or `model=transformer` the vanilla transformer
 # No data augmentation
 for lang in afb ail ame amh ara arz aym bra bul ces ckb ckt cni deu evn gup heb ind itl kmr kod krl lud mag nld olo pol por rus sah see sjo spa syc tur tyv vep vro; do
-bash example/sigmorphon2021-shared-tasks/part1-trm.sh $lang $model
+bash example/sigmorphon2021-shared-tasks/task0-trm.sh $lang $model
 done
 
 # Data augmentation (training size < 10k)
 for lang in ail ame bra ckt evn gup itl kod lud mag see syc sjo vro; do
-bash example/sigmorphon2021-shared-tasks/part1-trm-hall.sh $lang $model
+bash example/sigmorphon2021-shared-tasks/task0-trm-hall.sh $lang $model
 done
 ```
