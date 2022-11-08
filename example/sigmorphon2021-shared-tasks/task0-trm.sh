@@ -16,7 +16,7 @@ layers=4
 hs=1024
 embed_dim=256
 nb_heads=4
-dropout=${2:-0.3}
+dropout=${3:-0.3}
 
 ckpt_dir=checkpoints/sig21
 
