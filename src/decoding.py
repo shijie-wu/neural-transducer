@@ -548,7 +548,6 @@ def decode_beam_hmm(
     trg_eos=EOS_IDX,
     return_top_beams=False,
 ):
-
     transducer.eval()
     enc_hs = transducer.encode(src_sentence)
     T, bs = src_mask.shape
